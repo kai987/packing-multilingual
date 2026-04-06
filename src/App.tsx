@@ -1,7 +1,4 @@
-import type { CSSProperties } from 'react'
 import {
-  lazy,
-  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -16,6 +13,7 @@ import {
   type MetricItem,
 } from './components/common'
 import { ProductCard } from './components/ProductCard'
+import { SelectedPlanSection } from './components/SelectedPlanSection'
 import { SelectableMetricCard } from './components/SelectableMetricCard'
 import { SplitBoxCard } from './components/SplitBoxCard'
 import {
@@ -41,22 +39,18 @@ import {
   type SupportedLocale,
 } from './locale'
 import {
-  buildVoidFillBlocks,
-  formatDisplayItemWrapKind,
   formatDimensions,
+  formatDisplayItemWrapKind,
   formatLength,
   formatPackingStrategy,
   formatPercent,
   formatVolumeLiters,
   formatWeight,
   getDisplayItemWrapKind,
-  getDisplayItemWrapPadding,
   recommendPacking,
   recommendSplitPacking,
   type PackingStrategy,
 } from './packing'
-
-const PackingScene3D = lazy(() => import('./PackingScene3D'))
 const repositoryUrl = 'https://github.com/kai987/packing-multilingual'
 const repositoryAriaLabels: Record<SupportedLocale, string> = {
   ja: 'GitHub リポジトリを開く',
@@ -95,10 +89,6 @@ function App() {
     string | null
   >(null)
   const [selectedSplitKey, setSelectedSplitKey] = useState<string | null>(null)
-  const [threeDViewRequest, setThreeDViewRequest] = useState({
-    key: '',
-    nonce: 0,
-  })
   const languageMenuRef = useRef<HTMLDivElement | null>(null)
   const text = getAppText(locale)
   const localizedCatalog = useMemo(
@@ -210,17 +200,12 @@ function App() {
       }, 0),
     [quantities],
   )
-  const voidFillBlocks = useMemo(
-    () => (selectedRecommendation ? buildVoidFillBlocks(selectedRecommendation) : []),
-    [selectedRecommendation],
-  )
-  const selectedItemWrapKind = selectedRecommendation
-    ? getDisplayItemWrapKind(selectedRecommendation.cushion)
-    : null
-  const selectedItemWrapLabel =
-    selectedItemWrapKind !== null
-      ? formatDisplayItemWrapKind(selectedItemWrapKind, locale)
-      : ''
+  const selectedItemWrapLabel = selectedRecommendation
+    ? formatDisplayItemWrapKind(
+        getDisplayItemWrapKind(selectedRecommendation.cushion),
+        locale,
+      )
+    : ''
   const productCardLabels = {
     dimensions: text.order.dimensions,
     price: text.order.price,
@@ -681,235 +666,11 @@ function App() {
         </section>
 
         {selectedRecommendation ? (
-          <section className="section-card plan-section-card">
-            <SectionHeading
-              eyebrow={text.plan.eyebrow}
-              title={text.plan.title}
-            />
-
-            <article className="three-d-panel">
-              <div className="layer-header three-d-panel-head">
-                <div className="layer-header-copy">
-                  <strong>{text.plan.threeDTitle}</strong>
-                  <span>{text.plan.threeDHint}</span>
-                </div>
-                <button
-                  type="button"
-                  className="view-match-button"
-                  onClick={() =>
-                    setThreeDViewRequest((current) => ({
-                      key: selectedRecommendation.key,
-                      nonce: current.nonce + 1,
-                    }))
-                  }
-                >
-                  {text.plan.alignTopView}
-                </button>
-              </div>
-              <Suspense
-                fallback={
-                  <div className="three-d-loading">{text.plan.loading}</div>
-                }
-              >
-                <PackingScene3D
-                  recommendation={selectedRecommendation}
-                  viewSyncToken={
-                    threeDViewRequest.key === selectedRecommendation.key
-                      ? threeDViewRequest.nonce
-                      : 0
-                  }
-                />
-              </Suspense>
-
-              <div className="three-d-legend">
-                <span>{text.plan.legend.currentItemWrap(selectedItemWrapLabel)}</span>
-                <span>{text.plan.legend.wrap}</span>
-                <span>{text.plan.legend.paperFill}</span>
-                <span>{text.plan.legend.recommendedVoidFill}</span>
-                <span>{text.plan.legend.product}</span>
-                <span>{text.plan.legend.unusedTop}</span>
-                <span>{text.plan.legend.carton}</span>
-              </div>
-            </article>
-
-            <div className="layer-stack">
-              {selectedRecommendation.layers.map((layer) => {
-                const placements = selectedRecommendation.placements
-                  .filter((placement) => placement.layerIndex === layer.index)
-                  .sort((left, right) => {
-                    if (left.y !== right.y) {
-                      return left.y - right.y
-                    }
-
-                    return left.x - right.x
-                  })
-                const layerVoidBlocks = voidFillBlocks.filter(
-                  (block) => block.layerIndex === layer.index,
-                )
-                const itemWrapPadding = getDisplayItemWrapPadding(
-                  selectedRecommendation.cushion,
-                )
-                const itemWrapKind = getDisplayItemWrapKind(
-                  selectedRecommendation.cushion,
-                )
-
-                const boardStyle: CSSProperties = {
-                  aspectRatio: `${selectedRecommendation.carton.inner.length} / ${selectedRecommendation.carton.inner.width}`,
-                }
-
-                const effectiveAreaStyle: CSSProperties = {
-                  left: `${(selectedRecommendation.cushion.sidePadding / selectedRecommendation.carton.inner.length) * 100}%`,
-                  top: `${(selectedRecommendation.cushion.sidePadding / selectedRecommendation.carton.inner.width) * 100}%`,
-                  width: `${(selectedRecommendation.effectiveInner.length / selectedRecommendation.carton.inner.length) * 100}%`,
-                  height: `${(selectedRecommendation.effectiveInner.width / selectedRecommendation.carton.inner.width) * 100}%`,
-                }
-
-                return (
-                  <article className="layer-card" key={layer.index}>
-                    <div className="layer-header">
-                      <strong>{text.plan.layerTitle(layer.index + 1)}</strong>
-                      <span>
-                        {text.plan.layerRange(
-                          formatLength(
-                            selectedRecommendation.bottomFillHeight + layer.z,
-                            locale,
-                          ),
-                          formatLength(
-                            selectedRecommendation.bottomFillHeight +
-                              layer.z +
-                              layer.height,
-                            locale,
-                          ),
-                          formatLength(layer.height, locale),
-                        )}{' '}
-                      </span>
-                    </div>
-                    <div className="plan-board" style={boardStyle}>
-                      <div
-                        className="plan-effective-area"
-                        style={effectiveAreaStyle}
-                        aria-hidden="true"
-                      />
-                      {layerVoidBlocks.map((block) => (
-                        <div
-                          key={block.id}
-                          className="plan-void"
-                          style={{
-                            left: `${((selectedRecommendation.cushion.sidePadding + block.x) / selectedRecommendation.carton.inner.length) * 100}%`,
-                            top: `${((selectedRecommendation.cushion.sidePadding + block.y) / selectedRecommendation.carton.inner.width) * 100}%`,
-                            width: `${(block.length / selectedRecommendation.carton.inner.length) * 100}%`,
-                            height: `${(block.width / selectedRecommendation.carton.inner.width) * 100}%`,
-                          }}
-                        />
-                      ))}
-                      {placements.map((placement) => {
-                        const widthRate =
-                          placement.length / selectedRecommendation.carton.inner.length
-                        const heightRate =
-                          placement.width / selectedRecommendation.carton.inner.width
-                        const footprintRate = widthRate * heightRate
-                        const compactClass =
-                          footprintRate < 0.06 || widthRate < 0.24 || heightRate < 0.24
-                            ? footprintRate < 0.03 ||
-                              widthRate < 0.16 ||
-                              heightRate < 0.16
-                              ? ' is-tiny'
-                              : ' is-compact'
-                            : ''
-                        const insetXPercent = Math.min(
-                          (itemWrapPadding.side / placement.length) * 100,
-                          18,
-                        )
-                        const insetYPercent = Math.min(
-                          (itemWrapPadding.side / placement.width) * 100,
-                          18,
-                        )
-
-                        return (
-                          <div
-                            key={placement.instanceId}
-                            className={`plan-item-shell is-${itemWrapKind}${compactClass}`}
-                            title={`${placement.name} / ${formatDimensions({
-                              length: placement.length,
-                              width: placement.width,
-                              height: placement.height,
-                            }, locale)}`}
-                            style={{
-                              backgroundColor: placement.color,
-                              left: `${((selectedRecommendation.cushion.sidePadding + placement.x) / selectedRecommendation.carton.inner.length) * 100}%`,
-                              top: `${((selectedRecommendation.cushion.sidePadding + placement.y) / selectedRecommendation.carton.inner.width) * 100}%`,
-                              width: `${widthRate * 100}%`,
-                              height: `${heightRate * 100}%`,
-                            }}
-                          >
-                            <div
-                              className="plan-item"
-                              style={{
-                                backgroundColor: placement.color,
-                                left: `${insetXPercent}%`,
-                                right: `${insetXPercent}%`,
-                                top: `${insetYPercent}%`,
-                                bottom: `${insetYPercent}%`,
-                              }}
-                            >
-                              <span>{placement.brand}</span>
-                              <strong>{placement.category}</strong>
-                              <small>
-                                {formatDimensions({
-                                  length: placement.length,
-                                  width: placement.width,
-                                  height: placement.height,
-                                }, locale)}
-                              </small>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <div className="plan-legend">
-                      <span>{text.plan.boardLegend.sidePadding}</span>
-                      <span>
-                        {text.plan.boardLegend.itemWrap(
-                          formatDisplayItemWrapKind(itemWrapKind, locale),
-                        )}
-                      </span>
-                      <span>{text.plan.boardLegend.wrap}</span>
-                      <span>{text.plan.boardLegend.paperFill}</span>
-                      <span>{text.plan.boardLegend.recommendedVoidFill}</span>
-                      <span>
-                        {text.plan.boardLegend.padding(
-                          formatLength(selectedRecommendation.cushion.sidePadding, locale),
-                          formatLength(selectedRecommendation.cushion.topPadding, locale),
-                          formatLength(selectedRecommendation.bottomFillHeight, locale),
-                        )}
-                      </span>
-                    </div>
-                    <ul className="placement-list">
-                      {placements.map((placement) => (
-                        <li key={`${placement.instanceId}-list`}>
-                          <strong>{placement.name}</strong>
-                          <span>
-                            {text.plan.placementPosition(
-                              formatLength(placement.x, locale),
-                              formatLength(placement.y, locale),
-                              formatDimensions(
-                                {
-                                  length: placement.length,
-                                  width: placement.width,
-                                  height: placement.height,
-                                },
-                                locale,
-                              ),
-                            )}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </article>
-                )
-              })}
-            </div>
-          </section>
+          <SelectedPlanSection
+            recommendation={selectedRecommendation}
+            locale={locale}
+            labels={text.plan}
+          />
         ) : null}
 
         <section className="section-card">

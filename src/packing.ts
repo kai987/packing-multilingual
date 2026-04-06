@@ -1,4 +1,4 @@
-import { getIntlLocale, type SupportedLocale } from './locale'
+import { getIntlLocale, type SupportedLocale } from '@/locale'
 
 export type Dimensions = {
   length: number

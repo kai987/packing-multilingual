@@ -11,33 +11,33 @@ import {
   MetricsList,
   SectionHeading,
   type MetricItem,
-} from './components/common'
-import { ProductCard } from './components/ProductCard'
-import { SelectedPlanSection } from './components/SelectedPlanSection'
-import { SelectableMetricCard } from './components/SelectableMetricCard'
-import { SplitBoxCard } from './components/SplitBoxCard'
+} from '@/components/common'
+import { ProductCard } from '@/components/ProductCard'
+import { SelectedPlanSection } from '@/components/SelectedPlanSection'
+import { SelectableMetricCard } from '@/components/SelectableMetricCard'
+import { SplitBoxCard } from '@/components/SplitBoxCard'
 import {
   FloatingRepoLink,
   LanguageSwitcher,
-} from './components/TopControls'
+} from '@/components/TopControls'
 import {
   cartons as packingCartons,
   cushions as packingCushions,
   defaultOrderLines,
   products as packingProducts,
-} from './data'
+} from '@/data'
 import {
   getAppText,
   getLocalizedCatalog,
   getLocalizedCatalogMaps,
   localizeRecommendation,
   localizeSplitRecommendation,
-} from './localization'
+} from '@/localization'
 import {
   formatCurrencyYen,
   getDocumentLang,
   type SupportedLocale,
-} from './locale'
+} from '@/locale'
 import {
   formatDimensions,
   formatDisplayItemWrapKind,
@@ -50,7 +50,7 @@ import {
   recommendPacking,
   recommendSplitPacking,
   type PackingStrategy,
-} from './packing'
+} from '@/packing'
 const repositoryUrl = 'https://github.com/kai987/packing-multilingual'
 const repositoryAriaLabels: Record<SupportedLocale, string> = {
   ja: 'GitHub リポジトリを開く',

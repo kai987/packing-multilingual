@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import {
   MetricsList,
   type MetricItem,
-} from './common'
+} from '@/components/common'
 
 type SelectableMetricCardProps = {
   badge: ReactNode

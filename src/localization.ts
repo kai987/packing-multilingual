@@ -1,4 +1,4 @@
-import { cartons as baseCartons, cushions as baseCushions, products as baseProducts } from './data'
+import { cartons as baseCartons, cushions as baseCushions, products as baseProducts } from '@/data'
 import {
   getRecommendationReasons,
   getSplitRecommendationReasons,
@@ -7,8 +7,8 @@ import {
   type Product,
   type Recommendation,
   type SplitPackingRecommendation,
-} from './packing'
-import { getIntlLocale, type SupportedLocale } from './locale'
+} from '@/packing'
+import { getIntlLocale, type SupportedLocale } from '@/locale'
 
 type LocalizedEntry = Record<SupportedLocale, string>
 

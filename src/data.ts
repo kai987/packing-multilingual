@@ -1,4 +1,4 @@
-import type { Carton, CushionProfile, OrderLine, Product } from './packing'
+import type { Carton, CushionProfile, OrderLine, Product } from '@/packing'
 
 export type PokemonCenterBoxDetail = {
   id: string

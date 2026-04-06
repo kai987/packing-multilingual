@@ -8,7 +8,7 @@ import {
   getDisplayItemWrapKind,
   getDisplayItemWrapPadding,
   type Recommendation,
-} from './packing'
+} from '@/packing'
 
 type SceneDimensions = {
   cartonX: number

@@ -1,16 +1,16 @@
 import { lazy, Suspense, useMemo, useState } from 'react'
-import { type SupportedLocale } from '../locale'
+import { type SupportedLocale } from '@/locale'
 import {
   buildVoidFillBlocks,
   formatDisplayItemWrapKind,
   getDisplayItemWrapKind,
   type Recommendation,
-} from '../packing'
-import type { getAppText } from '../localization'
-import { SectionHeading } from './common'
-import { PlanLayerCard } from './PlanLayerCard'
+} from '@/packing'
+import type { getAppText } from '@/localization'
+import { SectionHeading } from '@/components/common'
+import { PlanLayerCard } from '@/components/PlanLayerCard'
 
-const PackingScene3D = lazy(() => import('../PackingScene3D'))
+const PackingScene3D = lazy(() => import('@/PackingScene3D'))
 
 type PlanText = ReturnType<typeof getAppText>['plan']
 

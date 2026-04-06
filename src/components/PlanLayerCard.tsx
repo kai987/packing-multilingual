@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { type SupportedLocale } from '../locale'
+import { type SupportedLocale } from '@/locale'
 import {
   formatDimensions,
   formatDisplayItemWrapKind,
@@ -9,8 +9,8 @@ import {
   type PackedLayer,
   type Recommendation,
   type VoidFillBlock,
-} from '../packing'
-import type { getAppText } from '../localization'
+} from '@/packing'
+import type { getAppText } from '@/localization'
 
 type PlanText = ReturnType<typeof getAppText>['plan']
 

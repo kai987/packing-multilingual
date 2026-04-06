@@ -1,9 +1,9 @@
-import { formatCurrencyYen, type SupportedLocale } from '../locale'
+import { formatCurrencyYen, type SupportedLocale } from '@/locale'
 import {
   formatDimensions,
   formatWeight,
   type Product,
-} from '../packing'
+} from '@/packing'
 
 type ProductCardLabels = {
   dimensions: string

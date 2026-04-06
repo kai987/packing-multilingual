@@ -7,7 +7,7 @@ import {
   localeNames,
   supportedLocales,
   type SupportedLocale,
-} from '../locale'
+} from '@/locale'
 
 type FloatingRepoLinkProps = {
   href: string

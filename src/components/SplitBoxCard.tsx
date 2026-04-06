@@ -1,18 +1,18 @@
 import { lazy, Suspense } from 'react'
-import { type SupportedLocale } from '../locale'
+import { type SupportedLocale } from '@/locale'
 import {
   formatLength,
   formatPercent,
   formatVolumeLiters,
   formatWeight,
   type SplitPackingBox,
-} from '../packing'
+} from '@/packing'
 import {
   MetricsList,
   type MetricItem,
-} from './common'
+} from '@/components/common'
 
-const PackingScene3D = lazy(() => import('../PackingScene3D'))
+const PackingScene3D = lazy(() => import('@/PackingScene3D'))
 
 type SplitBoxCardLabels = {
   boxTitle: (boxIndex: number) => string

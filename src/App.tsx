@@ -9,6 +9,20 @@ import {
 } from 'react'
 import './App.css'
 import {
+  DetailMetricGrid,
+  EmptyState,
+  MetricsList,
+  SectionHeading,
+  type MetricItem,
+} from './components/common'
+import { ProductCard } from './components/ProductCard'
+import { SelectableMetricCard } from './components/SelectableMetricCard'
+import { SplitBoxCard } from './components/SplitBoxCard'
+import {
+  FloatingRepoLink,
+  LanguageSwitcher,
+} from './components/TopControls'
+import {
   cartons as packingCartons,
   cushions as packingCushions,
   defaultOrderLines,
@@ -24,8 +38,6 @@ import {
 import {
   formatCurrencyYen,
   getDocumentLang,
-  localeNames,
-  supportedLocales,
   type SupportedLocale,
 } from './locale'
 import {
@@ -45,6 +57,34 @@ import {
 } from './packing'
 
 const PackingScene3D = lazy(() => import('./PackingScene3D'))
+const repositoryUrl = 'https://github.com/kai987/packing-multilingual'
+const repositoryAriaLabels: Record<SupportedLocale, string> = {
+  ja: 'GitHub リポジトリを開く',
+  zh: '打开 GitHub 仓库',
+  en: 'Open the GitHub repository',
+}
+
+function getSelectedItem<T extends { key: string }>(
+  items: T[],
+  selectedKey: string | null,
+) {
+  return items.find((item) => item.key === selectedKey) ?? items[0] ?? null
+}
+
+function formatCartonSummary(
+  boxes: Array<{
+    recommendation: {
+      carton: {
+        code: string
+        label: string
+      }
+    }
+  }>,
+) {
+  return boxes
+    .map((box) => `${box.recommendation.carton.code} ${box.recommendation.carton.label}`)
+    .join(' + ')
+}
 
 function App() {
   const [locale, setLocale] = useState<SupportedLocale>('ja')
@@ -145,21 +185,11 @@ function App() {
   )
 
   const selectedRecommendation = useMemo(
-    () =>
-      recommendations.find(
-        (recommendation) => recommendation.key === selectedRecommendationKey,
-      ) ??
-      recommendations[0] ??
-      null,
+    () => getSelectedItem(recommendations, selectedRecommendationKey),
     [recommendations, selectedRecommendationKey],
   )
   const selectedSplitRecommendation = useMemo(
-    () =>
-      splitRecommendations.find(
-        (recommendation) => recommendation.key === selectedSplitKey,
-      ) ??
-      splitRecommendations[0] ??
-      null,
+    () => getSelectedItem(splitRecommendations, selectedSplitKey),
     [selectedSplitKey, splitRecommendations],
   )
   const bestSingleRecommendation = recommendations[0] ?? null
@@ -191,6 +221,124 @@ function App() {
     selectedItemWrapKind !== null
       ? formatDisplayItemWrapKind(selectedItemWrapKind, locale)
       : ''
+  const productCardLabels = {
+    dimensions: text.order.dimensions,
+    price: text.order.price,
+    weight: text.order.weight,
+    note: text.order.note,
+    unsetPrice: text.order.unsetPrice,
+  }
+  const selectedPlanMetricItems: MetricItem[] = selectedRecommendation
+    ? [
+        {
+          label: text.selectedPlan.metrics.innerDimensions,
+          value: formatDimensions(selectedRecommendation.carton.inner, locale),
+        },
+        {
+          label: text.selectedPlan.metrics.effectiveInner,
+          value: formatDimensions(selectedRecommendation.effectiveInner, locale),
+        },
+        {
+          label: text.selectedPlan.metrics.totalWeight,
+          value: formatWeight(selectedRecommendation.totalWeight, locale),
+        },
+        {
+          label: text.selectedPlan.metrics.emptyVolume,
+          value: formatVolumeLiters(selectedRecommendation.emptyVolume, locale),
+        },
+        {
+          label: text.selectedPlan.metrics.recommendedVoidFill,
+          value: formatVolumeLiters(
+            selectedRecommendation.recommendedVoidFillVolume,
+            locale,
+          ),
+        },
+        {
+          label: text.selectedPlan.metrics.bottomFillHeight,
+          value: formatLength(selectedRecommendation.bottomFillHeight, locale),
+        },
+        {
+          label: text.selectedPlan.metrics.itemWrapKind,
+          value: selectedItemWrapLabel,
+        },
+        {
+          label: text.selectedPlan.metrics.topEmptyHeight,
+          value: formatLength(selectedRecommendation.topEmptyHeight, locale),
+        },
+        {
+          label: text.selectedPlan.metrics.topVoidFillHeight,
+          value: formatLength(selectedRecommendation.topVoidFillHeight, locale),
+        },
+        {
+          label: text.selectedPlan.metrics.unusedTopHeight,
+          value: formatLength(selectedRecommendation.unusedTopHeight, locale),
+        },
+        {
+          label: text.selectedPlan.metrics.unusedVolume,
+          value: formatVolumeLiters(selectedRecommendation.unusedVolume, locale),
+        },
+      ]
+    : []
+  const singleComparisonMetrics: MetricItem[] = bestSingleRecommendation
+    ? [
+        {
+          label: text.comparison.metrics.fillRate,
+          value: formatPercent(bestSingleRecommendation.effectiveFillRate, locale),
+        },
+        {
+          label: text.comparison.metrics.emptyVolume,
+          value: formatVolumeLiters(bestSingleRecommendation.emptyVolume, locale),
+        },
+        {
+          label: text.comparison.metrics.extraVoidFill,
+          value: formatVolumeLiters(
+            bestSingleRecommendation.recommendedVoidFillVolume,
+            locale,
+          ),
+        },
+        {
+          label: text.comparison.metrics.unusedVolume,
+          value: formatVolumeLiters(bestSingleRecommendation.unusedVolume, locale),
+        },
+      ]
+    : []
+  const splitComparisonMetrics: MetricItem[] = bestSplitRecommendation
+    ? [
+        {
+          label: text.comparison.metrics.totalFillRate,
+          value: formatPercent(bestSplitRecommendation.effectiveFillRate, locale),
+        },
+        {
+          label: text.comparison.metrics.totalEmptyVolume,
+          value: formatVolumeLiters(bestSplitRecommendation.totalEmptyVolume, locale),
+        },
+        {
+          label: text.comparison.metrics.extraVoidFill,
+          value: formatVolumeLiters(
+            bestSplitRecommendation.totalRecommendedVoidFillVolume,
+            locale,
+          ),
+        },
+        {
+          label: text.comparison.metrics.unusedVolume,
+          value: formatVolumeLiters(bestSplitRecommendation.totalUnusedVolume, locale),
+        },
+      ]
+    : []
+  const splitBoxLabels = {
+    boxTitle: text.split.boxTitle,
+    fillRate: text.split.fillRate,
+    weight: text.split.weight,
+    bottomFillHeight: text.split.bottomFillHeight,
+    topEmptyHeight: text.split.topEmptyHeight,
+    topVoidFillHeight: text.split.topVoidFillHeight,
+    unusedTopHeight: text.split.unusedTopHeight,
+    unusedVolume: text.split.unusedVolume,
+    boxThreeDTitle: text.split.boxThreeDTitle,
+    threeDHint: text.plan.threeDHint,
+    loading: text.plan.loading,
+    itemQuantity: text.split.itemQuantity,
+  }
 
   const updateQuantity = (productId: string, delta: number) => {
     setOrderLines((current) =>
@@ -213,6 +361,11 @@ function App() {
         quantity: 0,
       })),
     )
+  }
+  const changePackingStrategy = (strategy: PackingStrategy) => {
+    setPackingStrategy(strategy)
+    setSelectedRecommendationKey(null)
+    setSelectedSplitKey(null)
   }
 
   const updateLocaleImmediately = (localeOption: SupportedLocale) => {
@@ -271,54 +424,21 @@ function App() {
 
   return (
     <main className="page-shell">
-      <div
-        className={isLanguageMenuOpen ? 'language-switch-wrap is-open' : 'language-switch-wrap'}
-        ref={languageMenuRef}
-      >
-        <button
-          type="button"
-          className={isLanguageMenuOpen ? 'language-switch is-open' : 'language-switch'}
-          onPointerDown={toggleLanguageMenuOnPointerDown}
-          onKeyDown={handleLanguageMenuKeyDown}
-          aria-label={text.languageMenuAria}
-          aria-haspopup="menu"
-          aria-expanded={isLanguageMenuOpen}
-        >
-          <span className="language-switch-copy">
-            <strong>{localeNames[locale]}</strong>
-            <small>{text.languageMenuLabel}</small>
-          </span>
-          <span className="language-switch-caret" aria-hidden="true">
-            ▾
-          </span>
-        </button>
-
-        <div
-          className={isLanguageMenuOpen ? 'language-switch-menu is-open' : 'language-switch-menu'}
-          role="menu"
-          aria-label={text.languageMenuLabel}
-          aria-hidden={!isLanguageMenuOpen}
-        >
-          {supportedLocales.map((option) => (
-            <button
-              key={option}
-              type="button"
-              role="menuitemradio"
-              aria-checked={option === locale}
-              tabIndex={isLanguageMenuOpen ? 0 : -1}
-              className={
-                option === locale
-                  ? 'language-switch-option is-active'
-                  : 'language-switch-option'
-              }
-              onPointerDown={selectLanguageOnPointerDown(option)}
-              onKeyDown={handleLanguageOptionKeyDown(option)}
-            >
-              <span>{localeNames[option]}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      <FloatingRepoLink
+        href={repositoryUrl}
+        ariaLabel={repositoryAriaLabels[locale]}
+      />
+      <LanguageSwitcher
+        locale={locale}
+        isOpen={isLanguageMenuOpen}
+        menuRef={languageMenuRef}
+        label={text.languageMenuLabel}
+        ariaLabel={text.languageMenuAria}
+        onTogglePointerDown={toggleLanguageMenuOnPointerDown}
+        onToggleKeyDown={handleLanguageMenuKeyDown}
+        onOptionPointerDown={selectLanguageOnPointerDown}
+        onOptionKeyDown={handleLanguageOptionKeyDown}
+      />
 
       <section className="hero">
         <div className="hero-copy section-card">
@@ -354,75 +474,35 @@ function App() {
       <section className="workspace">
         <section className="left-column">
           <section className="section-card">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">{text.order.eyebrow}</p>
-                <h2>{text.order.title}</h2>
-              </div>
-              <div className="inline-actions">
-                <button type="button" onClick={resetSample}>
-                  {text.order.sampleButton}
-                </button>
-                <button type="button" onClick={clearOrder}>
-                  {text.order.clearButton}
-                </button>
-              </div>
-            </div>
+            <SectionHeading
+              eyebrow={text.order.eyebrow}
+              title={text.order.title}
+              actions={
+                <div className="inline-actions">
+                  <button type="button" onClick={resetSample}>
+                    {text.order.sampleButton}
+                  </button>
+                  <button type="button" onClick={clearOrder}>
+                    {text.order.clearButton}
+                  </button>
+                </div>
+              }
+            />
 
             <div className="product-grid">
               {products.map((product) => {
                 const quantity = quantities.get(product.id) ?? 0
 
                 return (
-                  <article className="product-card" key={product.id}>
-                    <div className="product-top">
-                      <span
-                        className="brand-chip"
-                        style={{ backgroundColor: product.color }}
-                      >
-                        {product.brand}
-                      </span>
-                      <strong>{product.name}</strong>
-                    </div>
-                    <p className="product-category">{product.category}</p>
-                    <dl className="meta-list">
-                      <div>
-                        <dt>{text.order.dimensions}</dt>
-                        <dd>{formatDimensions(product.size, locale)}</dd>
-                      </div>
-                      <div>
-                        <dt>{text.order.price}</dt>
-                        <dd>
-                          {product.priceYen
-                            ? formatCurrencyYen(product.priceYen, locale)
-                            : text.order.unsetPrice}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>{text.order.weight}</dt>
-                        <dd>{formatWeight(product.weight, locale)}</dd>
-                      </div>
-                      <div>
-                        <dt>{text.order.note}</dt>
-                        <dd>{product.note}</dd>
-                      </div>
-                    </dl>
-                    <div className="stepper">
-                      <button
-                        type="button"
-                        onClick={() => updateQuantity(product.id, -1)}
-                      >
-                        -
-                      </button>
-                      <strong>{quantity}</strong>
-                      <button
-                        type="button"
-                        onClick={() => updateQuantity(product.id, 1)}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </article>
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    quantity={quantity}
+                    locale={locale}
+                    labels={productCardLabels}
+                    onDecrease={() => updateQuantity(product.id, -1)}
+                    onIncrease={() => updateQuantity(product.id, 1)}
+                  />
                 )
               })}
             </div>
@@ -432,12 +512,10 @@ function App() {
 
         <section className="right-column">
           <section className="section-card">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">{text.recommendations.eyebrow}</p>
-                <h2>{text.recommendations.title}</h2>
-              </div>
-            </div>
+            <SectionHeading
+              eyebrow={text.recommendations.eyebrow}
+              title={text.recommendations.title}
+            />
 
             <div className="strategy-switch" aria-label={text.strategy.ariaLabel}>
               <button
@@ -447,11 +525,7 @@ function App() {
                     ? 'strategy-chip is-active'
                     : 'strategy-chip'
                 }
-                onClick={() => {
-                  setPackingStrategy('compact')
-                  setSelectedRecommendationKey(null)
-                  setSelectedSplitKey(null)
-                }}
+                onClick={() => changePackingStrategy('compact')}
               >
                 {text.strategy.compact}
               </button>
@@ -462,11 +536,7 @@ function App() {
                     ? 'strategy-chip is-active'
                     : 'strategy-chip'
                 }
-                onClick={() => {
-                  setPackingStrategy('stable')
-                  setSelectedRecommendationKey(null)
-                  setSelectedSplitKey(null)
-                }}
+                onClick={() => changePackingStrategy('stable')}
               >
                 {text.strategy.stable}
               </button>
@@ -478,54 +548,44 @@ function App() {
             </p>
 
             {totalUnits === 0 ? (
-              <div className="empty-state">
-                <strong>{text.recommendations.emptyNoItemsTitle}</strong>
-                <p>{text.recommendations.emptyNoItemsBody}</p>
-              </div>
+              <EmptyState
+                title={text.recommendations.emptyNoItemsTitle}
+                body={text.recommendations.emptyNoItemsBody}
+              />
             ) : recommendations.length === 0 ? (
-              <div className="empty-state">
-                <strong>{text.recommendations.emptyNoFitTitle}</strong>
-                <p>{text.recommendations.emptyNoFitBody}</p>
-              </div>
+              <EmptyState
+                title={text.recommendations.emptyNoFitTitle}
+                body={text.recommendations.emptyNoFitBody}
+              />
             ) : (
               <div className="recommendation-grid">
                 {recommendations.map((recommendation, index) => (
-                  <button
+                  <SelectableMetricCard
                     key={recommendation.key}
-                    type="button"
-                    className={
-                      selectedRecommendation?.key === recommendation.key
-                        ? 'recommend-card is-active'
-                        : 'recommend-card'
-                    }
+                    badge={text.recommendations.candidateLabel(index + 1)}
+                    title={recommendation.carton.code}
+                    subtitle={`${recommendation.carton.label} / ${recommendation.carton.service}`}
+                    metrics={[
+                      {
+                        label: text.recommendations.metrics.cushion,
+                        value: recommendation.cushion.name,
+                      },
+                      {
+                        label: text.recommendations.metrics.score,
+                        value: recommendation.score,
+                      },
+                      {
+                        label: text.recommendations.metrics.fillRate,
+                        value: formatPercent(recommendation.effectiveFillRate, locale),
+                      },
+                      {
+                        label: text.recommendations.metrics.stability,
+                        value: `${recommendation.stabilityScore} / 100`,
+                      },
+                    ]}
+                    isActive={selectedRecommendation?.key === recommendation.key}
                     onClick={() => setSelectedRecommendationKey(recommendation.key)}
-                  >
-                    <div className="recommend-head">
-                      <span>{text.recommendations.candidateLabel(index + 1)}</span>
-                      <strong>{recommendation.carton.code}</strong>
-                    </div>
-                    <p>
-                      {recommendation.carton.label} / {recommendation.carton.service}
-                    </p>
-                    <dl className="recommend-metrics">
-                      <div>
-                        <dt>{text.recommendations.metrics.cushion}</dt>
-                        <dd>{recommendation.cushion.name}</dd>
-                      </div>
-                      <div>
-                        <dt>{text.recommendations.metrics.score}</dt>
-                        <dd>{recommendation.score}</dd>
-                      </div>
-                      <div>
-                        <dt>{text.recommendations.metrics.fillRate}</dt>
-                        <dd>{formatPercent(recommendation.effectiveFillRate, locale)}</dd>
-                      </div>
-                      <div>
-                        <dt>{text.recommendations.metrics.stability}</dt>
-                        <dd>{recommendation.stabilityScore} / 100</dd>
-                      </div>
-                    </dl>
-                  </button>
+                  />
                 ))}
               </div>
             )}
@@ -534,89 +594,29 @@ function App() {
           {selectedRecommendation ? (
             <>
               <section className="section-card">
-                <div className="section-header">
-                  <div>
-                    <p className="eyebrow">{text.selectedPlan.eyebrow}</p>
-                    <h2>
+                <SectionHeading
+                  eyebrow={text.selectedPlan.eyebrow}
+                  title={
+                    <>
                       {selectedRecommendation.carton.code} /{' '}
                       {selectedRecommendation.cushion.name}
-                    </h2>
-                    <p className="service-line">
-                      {text.selectedPlan.serviceLabel}: {selectedRecommendation.carton.service}
-                    </p>
-                    <p className="service-line">
-                      {text.selectedPlan.strategyLabel}:{' '}
-                      {formatPackingStrategy(selectedRecommendation.strategy, locale)}
-                    </p>
-                  </div>
-                </div>
+                    </>
+                  }
+                  details={
+                    <>
+                      <p className="service-line">
+                        {text.selectedPlan.serviceLabel}:{' '}
+                        {selectedRecommendation.carton.service}
+                      </p>
+                      <p className="service-line">
+                        {text.selectedPlan.strategyLabel}:{' '}
+                        {formatPackingStrategy(selectedRecommendation.strategy, locale)}
+                      </p>
+                    </>
+                  }
+                />
 
-                <div className="detail-grid">
-                  <article>
-                    <span>{text.selectedPlan.metrics.innerDimensions}</span>
-                    <strong>
-                      {formatDimensions(selectedRecommendation.carton.inner, locale)}
-                    </strong>
-                  </article>
-                  <article>
-                    <span>{text.selectedPlan.metrics.effectiveInner}</span>
-                    <strong>
-                      {formatDimensions(selectedRecommendation.effectiveInner, locale)}
-                    </strong>
-                  </article>
-                  <article>
-                    <span>{text.selectedPlan.metrics.totalWeight}</span>
-                    <strong>{formatWeight(selectedRecommendation.totalWeight, locale)}</strong>
-                  </article>
-                  <article>
-                    <span>{text.selectedPlan.metrics.emptyVolume}</span>
-                    <strong>
-                      {formatVolumeLiters(selectedRecommendation.emptyVolume, locale)}
-                    </strong>
-                  </article>
-                  <article>
-                    <span>{text.selectedPlan.metrics.recommendedVoidFill}</span>
-                    <strong>
-                      {formatVolumeLiters(
-                        selectedRecommendation.recommendedVoidFillVolume,
-                        locale,
-                      )}
-                    </strong>
-                  </article>
-                  <article>
-                    <span>{text.selectedPlan.metrics.bottomFillHeight}</span>
-                    <strong>{formatLength(selectedRecommendation.bottomFillHeight, locale)}</strong>
-                  </article>
-                  <article>
-                    <span>{text.selectedPlan.metrics.itemWrapKind}</span>
-                    <strong>
-                      {formatDisplayItemWrapKind(
-                        getDisplayItemWrapKind(selectedRecommendation.cushion),
-                        locale,
-                      )}
-                    </strong>
-                  </article>
-                  <article>
-                    <span>{text.selectedPlan.metrics.topEmptyHeight}</span>
-                    <strong>{formatLength(selectedRecommendation.topEmptyHeight, locale)}</strong>
-                  </article>
-                  <article>
-                    <span>{text.selectedPlan.metrics.topVoidFillHeight}</span>
-                    <strong>
-                      {formatLength(selectedRecommendation.topVoidFillHeight, locale)}
-                    </strong>
-                  </article>
-                  <article>
-                    <span>{text.selectedPlan.metrics.unusedTopHeight}</span>
-                    <strong>{formatLength(selectedRecommendation.unusedTopHeight, locale)}</strong>
-                  </article>
-                  <article>
-                    <span>{text.selectedPlan.metrics.unusedVolume}</span>
-                    <strong>
-                      {formatVolumeLiters(selectedRecommendation.unusedVolume, locale)}
-                    </strong>
-                  </article>
-                </div>
+                <DetailMetricGrid items={selectedPlanMetricItems} />
 
                 <ul className="bullet-list">
                   {selectedRecommendation.reasons.map((reason) => (
@@ -633,12 +633,10 @@ function App() {
 
       <section className="analysis-panels">
         <section className="section-card compare-section-card">
-          <div className="section-header">
-            <div>
-              <p className="eyebrow">{text.comparison.eyebrow}</p>
-              <h2>{text.comparison.title}</h2>
-            </div>
-          </div>
+          <SectionHeading
+            eyebrow={text.comparison.eyebrow}
+            title={text.comparison.title}
+          />
 
           {bestSingleRecommendation && bestSplitRecommendation ? (
             <>
@@ -650,73 +648,16 @@ function App() {
                     {bestSingleRecommendation.carton.label}
                   </strong>
                   <p>{bestSingleRecommendation.cushion.name}</p>
-                  <dl className="recommend-metrics">
-                    <div>
-                      <dt>{text.comparison.metrics.fillRate}</dt>
-                      <dd>
-                        {formatPercent(bestSingleRecommendation.effectiveFillRate, locale)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>{text.comparison.metrics.emptyVolume}</dt>
-                      <dd>{formatVolumeLiters(bestSingleRecommendation.emptyVolume, locale)}</dd>
-                    </div>
-                    <div>
-                      <dt>{text.comparison.metrics.extraVoidFill}</dt>
-                      <dd>
-                        {formatVolumeLiters(
-                          bestSingleRecommendation.recommendedVoidFillVolume,
-                          locale,
-                        )}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>{text.comparison.metrics.unusedVolume}</dt>
-                      <dd>{formatVolumeLiters(bestSingleRecommendation.unusedVolume, locale)}</dd>
-                    </div>
-                  </dl>
+                  <MetricsList items={singleComparisonMetrics} />
                 </article>
 
                 <article className="comparison-card is-highlight">
                   <span className="comparison-tag">
                     {text.comparison.splitBest(bestSplitRecommendation.boxCount)}
                   </span>
-                  <strong>
-                    {bestSplitRecommendation.boxes
-                      .map(
-                        (box) =>
-                          `${box.recommendation.carton.code} ${box.recommendation.carton.label}`,
-                      )
-                      .join(' + ')}
-                  </strong>
+                  <strong>{formatCartonSummary(bestSplitRecommendation.boxes)}</strong>
                   <p>{text.comparison.splitShipment(bestSplitRecommendation.boxes.length)}</p>
-                  <dl className="recommend-metrics">
-                    <div>
-                      <dt>{text.comparison.metrics.totalFillRate}</dt>
-                      <dd>{formatPercent(bestSplitRecommendation.effectiveFillRate, locale)}</dd>
-                    </div>
-                    <div>
-                      <dt>{text.comparison.metrics.totalEmptyVolume}</dt>
-                      <dd>
-                        {formatVolumeLiters(bestSplitRecommendation.totalEmptyVolume, locale)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>{text.comparison.metrics.extraVoidFill}</dt>
-                      <dd>
-                        {formatVolumeLiters(
-                          bestSplitRecommendation.totalRecommendedVoidFillVolume,
-                          locale,
-                        )}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>{text.comparison.metrics.unusedVolume}</dt>
-                      <dd>
-                        {formatVolumeLiters(bestSplitRecommendation.totalUnusedVolume, locale)}
-                      </dd>
-                    </div>
-                  </dl>
+                  <MetricsList items={splitComparisonMetrics} />
                 </article>
               </div>
               <p className="strategy-note compare-note">
@@ -732,21 +673,19 @@ function App() {
               </p>
             </>
           ) : (
-            <div className="empty-state">
-              <strong>{text.comparison.emptyTitle}</strong>
-              <p>{text.comparison.emptyBody}</p>
-            </div>
+            <EmptyState
+              title={text.comparison.emptyTitle}
+              body={text.comparison.emptyBody}
+            />
           )}
         </section>
 
         {selectedRecommendation ? (
           <section className="section-card plan-section-card">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">{text.plan.eyebrow}</p>
-                <h2>{text.plan.title}</h2>
-              </div>
-            </div>
+            <SectionHeading
+              eyebrow={text.plan.eyebrow}
+              title={text.plan.title}
+            />
 
             <article className="three-d-panel">
               <div className="layer-header three-d-panel-head">
@@ -974,70 +913,52 @@ function App() {
         ) : null}
 
         <section className="section-card">
-          <div className="section-header">
-            <div>
-              <p className="eyebrow">{text.split.eyebrow}</p>
-              <h2>{text.split.title}</h2>
-            </div>
-          </div>
+          <SectionHeading
+            eyebrow={text.split.eyebrow}
+            title={text.split.title}
+          />
 
           {splitRecommendations.length === 0 ? (
-            <div className="empty-state">
-              <strong>{text.split.emptyTitle}</strong>
-              <p>{text.split.emptyBody}</p>
-            </div>
+            <EmptyState title={text.split.emptyTitle} body={text.split.emptyBody} />
           ) : (
             <>
               <div className="split-recommendation-grid">
                 {splitRecommendations.map((recommendation, index) => (
-                  <button
+                  <SelectableMetricCard
                     key={recommendation.key}
-                    type="button"
-                    className={
-                      selectedSplitRecommendation?.key === recommendation.key
-                        ? 'recommend-card is-active'
-                        : 'recommend-card'
-                    }
+                    badge={text.split.optionLabel(recommendation.boxCount, index + 1)}
+                    title={formatPercent(recommendation.effectiveFillRate, locale)}
+                    subtitle={formatCartonSummary(recommendation.boxes)}
+                    metrics={[
+                      {
+                        label: text.split.metrics.totalEmptyVolume,
+                        value: formatVolumeLiters(
+                          recommendation.totalEmptyVolume,
+                          locale,
+                        ),
+                      },
+                      {
+                        label: text.split.metrics.extraVoidFill,
+                        value: formatVolumeLiters(
+                          recommendation.totalRecommendedVoidFillVolume,
+                          locale,
+                        ),
+                      },
+                      {
+                        label: text.split.metrics.unusedVolume,
+                        value: formatVolumeLiters(
+                          recommendation.totalUnusedVolume,
+                          locale,
+                        ),
+                      },
+                      {
+                        label: text.split.metrics.stability,
+                        value: `${recommendation.stabilityScore} / 100`,
+                      },
+                    ]}
+                    isActive={selectedSplitRecommendation?.key === recommendation.key}
                     onClick={() => setSelectedSplitKey(recommendation.key)}
-                  >
-                    <div className="recommend-head">
-                      <span>
-                        {text.split.optionLabel(recommendation.boxCount, index + 1)}
-                      </span>
-                      <strong>{formatPercent(recommendation.effectiveFillRate, locale)}</strong>
-                    </div>
-                    <p>
-                      {recommendation.boxes
-                        .map(
-                          (box) =>
-                            `${box.recommendation.carton.code} ${box.recommendation.carton.label}`,
-                        )
-                        .join(' + ')}
-                    </p>
-                    <dl className="recommend-metrics">
-                      <div>
-                        <dt>{text.split.metrics.totalEmptyVolume}</dt>
-                        <dd>{formatVolumeLiters(recommendation.totalEmptyVolume, locale)}</dd>
-                      </div>
-                      <div>
-                        <dt>{text.split.metrics.extraVoidFill}</dt>
-                        <dd>
-                          {formatVolumeLiters(
-                            recommendation.totalRecommendedVoidFillVolume,
-                            locale,
-                          )}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>{text.split.metrics.unusedVolume}</dt>
-                        <dd>{formatVolumeLiters(recommendation.totalUnusedVolume, locale)}</dd>
-                      </div>
-                      <div>
-                        <dt>{text.split.metrics.stability}</dt>
-                        <dd>{recommendation.stabilityScore} / 100</dd>
-                      </div>
-                    </dl>
-                  </button>
+                  />
                 ))}
               </div>
 
@@ -1045,74 +966,12 @@ function App() {
                 <>
                   <div className="split-box-grid">
                     {selectedSplitRecommendation.boxes.map((box) => (
-                      <article className="split-box-card" key={box.boxIndex}>
-                        <div className="split-box-header">
-                          <strong>{text.split.boxTitle(box.boxIndex)}</strong>
-                          <span>{box.recommendation.carton.service}</span>
-                        </div>
-                        <h3>
-                          {box.recommendation.carton.code} /{' '}
-                          {box.recommendation.carton.label}
-                        </h3>
-                        <p className="service-line">{box.recommendation.cushion.name}</p>
-                        <dl className="recommend-metrics">
-                          <div>
-                            <dt>{text.split.fillRate}</dt>
-                            <dd>{formatPercent(box.recommendation.effectiveFillRate, locale)}</dd>
-                          </div>
-                          <div>
-                            <dt>{text.split.weight}</dt>
-                            <dd>{formatWeight(box.recommendation.totalWeight, locale)}</dd>
-                          </div>
-                          <div>
-                            <dt>{text.split.bottomFillHeight}</dt>
-                            <dd>{formatLength(box.recommendation.bottomFillHeight, locale)}</dd>
-                          </div>
-                          <div>
-                            <dt>{text.split.topEmptyHeight}</dt>
-                            <dd>{formatLength(box.recommendation.topEmptyHeight, locale)}</dd>
-                          </div>
-                          <div>
-                            <dt>{text.split.topVoidFillHeight}</dt>
-                            <dd>{formatLength(box.recommendation.topVoidFillHeight, locale)}</dd>
-                          </div>
-                          <div>
-                            <dt>{text.split.unusedTopHeight}</dt>
-                            <dd>{formatLength(box.recommendation.unusedTopHeight, locale)}</dd>
-                          </div>
-                          <div>
-                            <dt>{text.split.unusedVolume}</dt>
-                            <dd>{formatVolumeLiters(box.recommendation.unusedVolume, locale)}</dd>
-                          </div>
-                        </dl>
-                        <article className="split-box-visual">
-                          <div className="layer-header">
-                            <strong>{text.split.boxThreeDTitle(box.boxIndex)}</strong>
-                            <span>{text.plan.threeDHint}</span>
-                          </div>
-                          <Suspense
-                            fallback={
-                              <div className="split-box-loading">{text.plan.loading}</div>
-                            }
-                          >
-                            <PackingScene3D recommendation={box.recommendation} />
-                          </Suspense>
-                        </article>
-                        <ul className="split-item-list">
-                          {box.items.map((item) => (
-                            <li key={`${box.boxIndex}-${item.productId}`}>
-                              <span
-                                className="brand-chip"
-                                style={{ backgroundColor: item.color }}
-                              >
-                                {item.brand}
-                              </span>
-                              <strong>{item.name}</strong>
-                              <span>{text.split.itemQuantity(item.quantity)}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </article>
+                      <SplitBoxCard
+                        key={box.boxIndex}
+                        box={box}
+                        locale={locale}
+                        labels={splitBoxLabels}
+                      />
                     ))}
                   </div>
                   <ul className="bullet-list">
@@ -1127,12 +986,10 @@ function App() {
         </section>
 
         <section className="section-card">
-          <div className="section-header">
-            <div>
-              <p className="eyebrow">{text.catalog.eyebrow}</p>
-              <h2>{text.catalog.title}</h2>
-            </div>
-          </div>
+          <SectionHeading
+            eyebrow={text.catalog.eyebrow}
+            title={text.catalog.title}
+          />
 
           <div className="catalog-grid">
             <div className="catalog-panel">
@@ -1195,12 +1052,10 @@ function App() {
 
       <section className="post-workspace">
         <section className="section-card">
-          <div className="section-header">
-            <div>
-              <p className="eyebrow">{text.nextData.eyebrow}</p>
-              <h2>{text.nextData.title}</h2>
-            </div>
-          </div>
+          <SectionHeading
+            eyebrow={text.nextData.eyebrow}
+            title={text.nextData.title}
+          />
           <ul className="bullet-list">
             {text.nextData.items.map((item) => (
               <li key={item}>{item}</li>

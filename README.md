@@ -1,6 +1,7 @@
 # brick-packing frontend
 
-`Vite + React + TypeScript` で構成した、日本向け梱包プランナーのフロントエンド原型です。
+`Vite + React + TypeScript` で構成した、日本向け梱包プランナーのフロントエンド原型です。  
+<https://kai987.github.io/packing-multilingual/>
 
 この原型では、以下のような業務課題を想定しています。
 

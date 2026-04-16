@@ -199,13 +199,17 @@ export const cushions: CushionProfile[] = [
 ]
 
 export const defaultOrderLines: OrderLine[] = [
-  { productId: 'pokemon-booster-box', quantity: 2 },
-  { productId: 'pokemon-premium-set', quantity: 1 },
-  { productId: 'onepiece-booster-box', quantity: 1 },
-  { productId: 'onepiece-double-pack', quantity: 0 },
-  { productId: 'onepiece-op15-adventure-on-gods-island', quantity: 0 },
-  { productId: 'dragonball-booster-box', quantity: 1 },
-  { productId: 'dragonball-starter-deck', quantity: 2 },
+  { productId: 'pokemon-booster-box', quantity: 2, useItemWrap: false },
+  { productId: 'pokemon-premium-set', quantity: 1, useItemWrap: false },
+  { productId: 'onepiece-booster-box', quantity: 1, useItemWrap: false },
+  { productId: 'onepiece-double-pack', quantity: 0, useItemWrap: false },
+  {
+    productId: 'onepiece-op15-adventure-on-gods-island',
+    quantity: 0,
+    useItemWrap: false,
+  },
+  { productId: 'dragonball-booster-box', quantity: 1, useItemWrap: false },
+  { productId: 'dragonball-starter-deck', quantity: 2, useItemWrap: false },
 ]
 
 export const pokemonCenterBoxDetails: PokemonCenterBoxDetail[] = [

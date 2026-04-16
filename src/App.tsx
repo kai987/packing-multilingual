@@ -39,6 +39,7 @@ import {
   type SupportedLocale,
 } from '@/locale'
 import {
+  type Product,
   formatDimensions,
   formatDisplayItemWrapKind,
   formatLength,
@@ -56,6 +57,20 @@ const repositoryAriaLabels: Record<SupportedLocale, string> = {
   ja: 'GitHub リポジトリを開く',
   zh: '打开 GitHub 仓库',
   en: 'Open the GitHub repository',
+}
+const PRODUCT_QUANTITY_MAX_DIGITS = 3
+const PRODUCT_DIMENSION_MAX_DIGITS = 3
+const PRODUCT_PRICE_MAX_DIGITS = 6
+
+function cloneProducts(products: Product[]) {
+  return products.map((product) => ({
+    ...product,
+    size: { ...product.size },
+  }))
+}
+
+function sanitizeDigitsInput(rawValue: string, maxDigits: number) {
+  return rawValue.replace(/\D/g, '').slice(0, maxDigits)
 }
 
 function getSelectedItem<T extends { key: string }>(
@@ -83,6 +98,9 @@ function formatCartonSummary(
 function App() {
   const [locale, setLocale] = useState<SupportedLocale>('ja')
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false)
+  const [editableProducts, setEditableProducts] = useState(() =>
+    cloneProducts(packingProducts),
+  )
   const [orderLines, setOrderLines] = useState(defaultOrderLines)
   const [packingStrategy, setPackingStrategy] = useState<PackingStrategy>('compact')
   const [selectedRecommendationKey, setSelectedRecommendationKey] = useState<
@@ -92,8 +110,28 @@ function App() {
   const languageMenuRef = useRef<HTMLDivElement | null>(null)
   const text = getAppText(locale)
   const localizedCatalog = useMemo(
-    () => getLocalizedCatalog(locale),
-    [locale],
+    () => {
+      const baseCatalog = getLocalizedCatalog(locale)
+      const editableProductsById = new Map(
+        editableProducts.map((product) => [product.id, product] as const),
+      )
+
+      return {
+        ...baseCatalog,
+        products: baseCatalog.products.map((product) => {
+          const editableProduct = editableProductsById.get(product.id)
+
+          return editableProduct
+            ? {
+                ...product,
+                size: { ...editableProduct.size },
+                priceYen: editableProduct.priceYen,
+              }
+            : product
+        }),
+      }
+    },
+    [editableProducts, locale],
   )
   const { products, cartons, cushions } = localizedCatalog
   const localizedCatalogMaps = useMemo(
@@ -136,28 +174,33 @@ function App() {
     () => new Map(orderLines.map((line) => [line.productId, line.quantity] as const)),
     [orderLines],
   )
+  const itemWrapUsage = useMemo(
+    () =>
+      new Map(orderLines.map((line) => [line.productId, line.useItemWrap] as const)),
+    [orderLines],
+  )
 
   const baseRecommendations = useMemo(
     () =>
       recommendPacking({
-        products: packingProducts,
+        products: editableProducts,
         cartons: packingCartons,
         cushions: packingCushions,
         orderLines,
         strategy: packingStrategy,
       }).slice(0, 3),
-    [orderLines, packingStrategy],
+    [editableProducts, orderLines, packingStrategy],
   )
   const baseSplitRecommendations = useMemo(
     () =>
       recommendSplitPacking({
-        products: packingProducts,
+        products: editableProducts,
         cartons: packingCartons,
         cushions: packingCushions,
         orderLines,
         strategy: packingStrategy,
       }).slice(0, 3),
-    [orderLines, packingStrategy],
+    [editableProducts, orderLines, packingStrategy],
   )
   const recommendations = useMemo(
     () =>
@@ -195,23 +238,38 @@ function App() {
   )
   const totalWeight = useMemo(
     () =>
-      packingProducts.reduce((sum, product) => {
+      editableProducts.reduce((sum, product) => {
         return sum + product.weight * (quantities.get(product.id) ?? 0)
       }, 0),
-    [quantities],
+    [editableProducts, quantities],
   )
+  const selectedHasItemWrap = selectedRecommendation
+    ? selectedRecommendation.placements.some((placement) => placement.useItemWrap)
+    : false
   const selectedItemWrapLabel = selectedRecommendation
-    ? formatDisplayItemWrapKind(
+    ? selectedHasItemWrap
+      ? formatDisplayItemWrapKind(
         getDisplayItemWrapKind(selectedRecommendation.cushion),
         locale,
       )
+      : text.order.itemWrapDisabled
     : ''
   const productCardLabels = {
     dimensions: text.order.dimensions,
+    dimensionsUnit: text.order.dimensionsUnit,
+    dimensionLength: text.order.dimensionLength,
+    dimensionWidth: text.order.dimensionWidth,
+    dimensionHeight: text.order.dimensionHeight,
     price: text.order.price,
+    priceUnit: text.order.priceUnit,
     weight: text.order.weight,
     note: text.order.note,
     unsetPrice: text.order.unsetPrice,
+    itemWrapLabel: text.order.itemWrapLabel,
+    itemWrapEnabled: text.order.itemWrapEnabled,
+    itemWrapDisabled: text.order.itemWrapDisabled,
+    itemWrapEnableAction: text.order.itemWrapEnableAction,
+    itemWrapDisableAction: text.order.itemWrapDisableAction,
   }
   const selectedPlanMetricItems: MetricItem[] = selectedRecommendation
     ? [
@@ -329,9 +387,81 @@ function App() {
     setOrderLines((current) =>
       current.map((line) =>
         line.productId === productId
-          ? { ...line, quantity: Math.max(0, line.quantity + delta) }
+          ? {
+              ...line,
+              quantity: Math.min(999, Math.max(0, line.quantity + delta)),
+            }
           : line,
       ),
+    )
+  }
+  const updateQuantityValue = (productId: string, rawValue: string) => {
+    const nextDigits = sanitizeDigitsInput(
+      rawValue,
+      PRODUCT_QUANTITY_MAX_DIGITS,
+    )
+
+    setOrderLines((current) =>
+      current.map((line) =>
+        line.productId === productId
+          ? {
+              ...line,
+              quantity:
+                nextDigits.length > 0 ? Number.parseInt(nextDigits, 10) : 0,
+            }
+          : line,
+      ),
+    )
+  }
+  const updateProductDimension = (
+    productId: string,
+    dimension: keyof Product['size'],
+    rawValue: string,
+  ) => {
+    const nextDigits = sanitizeDigitsInput(
+      rawValue,
+      PRODUCT_DIMENSION_MAX_DIGITS,
+    )
+
+    if (nextDigits.length === 0) {
+      return
+    }
+
+    const nextValue = Number.parseInt(nextDigits, 10)
+
+    if (!Number.isFinite(nextValue)) {
+      return
+    }
+
+    setEditableProducts((current) =>
+      current.map((product) =>
+        product.id === productId
+          ? {
+              ...product,
+              size: {
+                ...product.size,
+                [dimension]: nextValue,
+              },
+            }
+          : product,
+      ),
+    )
+  }
+  const updateProductPrice = (productId: string, rawValue: string) => {
+    const nextDigits = sanitizeDigitsInput(rawValue, PRODUCT_PRICE_MAX_DIGITS)
+
+    setEditableProducts((current) =>
+      current.map((product) => {
+        if (product.id !== productId) {
+          return product
+        }
+
+        return {
+          ...product,
+          priceYen:
+            nextDigits.length > 0 ? Number.parseInt(nextDigits, 10) : undefined,
+        }
+      }),
     )
   }
 
@@ -345,6 +475,15 @@ function App() {
         ...line,
         quantity: 0,
       })),
+    )
+  }
+  const toggleItemWrap = (productId: string) => {
+    setOrderLines((current) =>
+      current.map((line) =>
+        line.productId === productId
+          ? { ...line, useItemWrap: !line.useItemWrap }
+          : line,
+      ),
     )
   }
   const changePackingStrategy = (strategy: PackingStrategy) => {
@@ -477,16 +616,26 @@ function App() {
             <div className="product-grid">
               {products.map((product) => {
                 const quantity = quantities.get(product.id) ?? 0
+                const useItemWrap = itemWrapUsage.get(product.id) ?? false
 
                 return (
                   <ProductCard
                     key={product.id}
                     product={product}
                     quantity={quantity}
+                    useItemWrap={useItemWrap}
                     locale={locale}
                     labels={productCardLabels}
                     onDecrease={() => updateQuantity(product.id, -1)}
                     onIncrease={() => updateQuantity(product.id, 1)}
+                    onQuantityChange={(value) =>
+                      updateQuantityValue(product.id, value)
+                    }
+                    onPriceChange={(value) => updateProductPrice(product.id, value)}
+                    onDimensionChange={(dimension, value) =>
+                      updateProductDimension(product.id, dimension, value)
+                    }
+                    onToggleItemWrap={() => toggleItemWrap(product.id)}
                   />
                 )
               })}
@@ -670,6 +819,7 @@ function App() {
             recommendation={selectedRecommendation}
             locale={locale}
             labels={text.plan}
+            disabledWrapLabel={text.order.itemWrapDisabled}
           />
         ) : null}
 

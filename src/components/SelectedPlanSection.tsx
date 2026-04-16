@@ -18,12 +18,14 @@ type SelectedPlanSectionProps = {
   recommendation: Recommendation
   locale: SupportedLocale
   labels: PlanText
+  disabledWrapLabel: string
 }
 
 export function SelectedPlanSection({
   recommendation,
   locale,
   labels,
+  disabledWrapLabel,
 }: SelectedPlanSectionProps) {
   const [viewSyncToken, setViewSyncToken] = useState(0)
 
@@ -32,8 +34,11 @@ export function SelectedPlanSection({
     [recommendation.cushion],
   )
   const selectedItemWrapLabel = useMemo(
-    () => formatDisplayItemWrapKind(itemWrapKind, locale),
-    [itemWrapKind, locale],
+    () =>
+      recommendation.placements.some((placement) => placement.useItemWrap)
+        ? formatDisplayItemWrapKind(itemWrapKind, locale)
+        : disabledWrapLabel,
+    [disabledWrapLabel, itemWrapKind, locale, recommendation.placements],
   )
   const voidFillBlocks = useMemo(
     () => buildVoidFillBlocks(recommendation),

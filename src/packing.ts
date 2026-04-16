@@ -45,6 +45,7 @@ export type CushionProfile = {
 export type OrderLine = {
   productId: string
   quantity: number
+  useItemWrap: boolean
 }
 
 export type PackedPlacement = {
@@ -54,6 +55,7 @@ export type PackedPlacement = {
   brand: string
   category: string
   color: string
+  useItemWrap: boolean
   x: number
   y: number
   z: number
@@ -147,6 +149,7 @@ type OrderUnit = {
   weight: number
   fragility: Product['fragility']
   color: string
+  useItemWrap: boolean
 }
 
 type RowFrame = {
@@ -171,14 +174,13 @@ type PlacementCandidate = {
   orientation: Dimensions
   score: number
   rowDepthDelta: number
-  layerHeightDelta: number
 }
 
 export type PackingStrategy = 'compact' | 'stable'
 
 const MAX_LAYERS = 2
+export const LAYER_SEPARATOR_HEIGHT = 10
 const LOCAL_SUPPORT_MIN_COVERAGE = 0.72
-const LOCAL_SUPPORT_HEIGHT_TOLERANCE = 10
 const MAX_SPLIT_BOXES = 5
 const MAX_SPLIT_PARTITIONS_PER_GROUP = 6
 const MAX_MULTI_BOX_GROUPINGS = 24
@@ -894,6 +896,7 @@ function expandOrderUnits(products: Product[], orderLines: OrderLine[]): OrderUn
         weight: product.weight,
         fragility: product.fragility,
         color: product.color,
+        useItemWrap: line.useItemWrap,
       })
     }
   }
@@ -930,25 +933,24 @@ function packUnits(
   const placements: PackedPlacement[] = []
 
   for (const unit of units) {
-    let bestCandidate: PlacementCandidate | null = null
+    let bestCandidate = findBestPlacementCandidate({
+      unit,
+      layers,
+      placements,
+      bounds,
+      strategy,
+      allowNewLayer: false,
+    })
 
-    for (const orientation of getOrientations(unit, strategy)) {
-      const candidate = findPlacementCandidate({
+    if (!bestCandidate) {
+      bestCandidate = findBestPlacementCandidate({
+        unit,
         layers,
         placements,
         bounds,
-        orientation,
-        fragility: unit.fragility,
         strategy,
+        allowNewLayer: true,
       })
-
-      if (!candidate) {
-        continue
-      }
-
-      if (!bestCandidate || candidate.score < bestCandidate.score) {
-        bestCandidate = candidate
-      }
     }
 
     if (!bestCandidate) {
@@ -970,30 +972,12 @@ function packUnits(
     } else if (bestCandidate.mode === 'new-row') {
       const layer = layers[bestCandidate.layerIndex]
 
-      if (bestCandidate.layerHeightDelta > 0) {
-        expandLayerHeight({
-          layers,
-          placements,
-          layerIndex: bestCandidate.layerIndex,
-          delta: bestCandidate.layerHeightDelta,
-        })
-      }
-
       layer.rows.push({
         y: bestCandidate.y,
         depth: bestCandidate.orientation.width,
         cursor: bestCandidate.orientation.length,
       })
     } else {
-      if (bestCandidate.layerHeightDelta > 0) {
-        expandLayerHeight({
-          layers,
-          placements,
-          layerIndex: bestCandidate.layerIndex,
-          delta: bestCandidate.layerHeightDelta,
-        })
-      }
-
       if (bestCandidate.rowDepthDelta > 0) {
         expandRowDepth({
           layers,
@@ -1015,6 +999,7 @@ function packUnits(
       brand: unit.brand,
       category: unit.category,
       color: unit.color,
+      useItemWrap: unit.useItemWrap,
       x: bestCandidate.x,
       y: bestCandidate.y,
       z: bestCandidate.z,
@@ -1027,116 +1012,48 @@ function packUnits(
     })
   }
 
-  return applyLocalSupport(centerPackedContent({ placements, layers }, bounds))
+  return centerPackedContent({ placements, layers }, bounds)
 }
 
-function applyLocalSupport(
-  packed: { placements: PackedPlacement[]; layers: LayerFrame[] },
-) {
-  const placements = packed.placements.map((placement) => ({ ...placement }))
-  const placementsByLayer = new Map<number, PackedPlacement[]>(
-    packed.layers.map((_, index) => [index, [] as PackedPlacement[]]),
-  )
+function findBestPlacementCandidate({
+  unit,
+  layers,
+  placements,
+  bounds,
+  strategy,
+  allowNewLayer,
+}: {
+  unit: OrderUnit
+  layers: LayerFrame[]
+  placements: PackedPlacement[]
+  bounds: Dimensions
+  strategy: PackingStrategy
+  allowNewLayer: boolean
+}) {
+  let bestCandidate: PlacementCandidate | null = null
 
-  for (const placement of placements) {
-    const layerPlacements = placementsByLayer.get(placement.layerIndex)
+  for (const orientation of getOrientations(unit, strategy)) {
+    const candidate = findPlacementCandidate({
+      layers,
+      placements,
+      bounds,
+      orientation,
+      fragility: unit.fragility,
+      strategy,
+      productId: unit.productId,
+      allowNewLayer,
+    })
 
-    if (layerPlacements) {
-      layerPlacements.push(placement)
-    } else {
-      placementsByLayer.set(placement.layerIndex, [placement])
-    }
-  }
-
-  const sortedPlacements = [...placements].sort((left, right) => {
-    if (left.layerIndex !== right.layerIndex) {
-      return left.layerIndex - right.layerIndex
-    }
-
-    return left.instanceId.localeCompare(right.instanceId)
-  })
-
-  for (const placement of sortedPlacements) {
-    if (placement.layerIndex === 0) {
+    if (!candidate) {
       continue
     }
 
-    const lowerPlacements = placements.filter(
-      (candidate) => candidate.layerIndex < placement.layerIndex,
-    )
-    const supportedZ = getLocalSupportZ(placement, lowerPlacements)
-
-    if (supportedZ !== null) {
-      placement.z = supportedZ
+    if (!bestCandidate || candidate.score < bestCandidate.score) {
+      bestCandidate = candidate
     }
   }
 
-  const layers = packed.layers.map((layer, index) => {
-    const layerPlacements = placementsByLayer.get(index) ?? []
-
-    if (layerPlacements.length === 0) {
-      return layer
-    }
-
-    const nextZ = layerPlacements.reduce(
-      (min, placement) => Math.min(min, placement.z),
-      Number.POSITIVE_INFINITY,
-    )
-    const nextTop = layerPlacements.reduce(
-      (max, placement) => Math.max(max, placement.z + placement.height),
-      0,
-    )
-
-    return {
-      ...layer,
-      z: Number.isFinite(nextZ) ? nextZ : layer.z,
-      height: Math.max(nextTop - nextZ, 0),
-    }
-  })
-
-  return { placements, layers }
-}
-
-function getLocalSupportZ(
-  placement: PackedPlacement,
-  lowerPlacements: PackedPlacement[],
-) {
-  const footprintArea = placement.length * placement.width
-
-  if (footprintArea <= 0) {
-    return null
-  }
-
-  let coveredArea = 0
-  let maxTop = 0
-  let minTop = Number.POSITIVE_INFINITY
-
-  for (const lowerPlacement of lowerPlacements) {
-    const overlap = getPlacementFootprintOverlap(placement, lowerPlacement)
-
-    if (!overlap) {
-      continue
-    }
-
-    coveredArea += overlap.length * overlap.width
-    const top = lowerPlacement.z + lowerPlacement.height
-    maxTop = Math.max(maxTop, top)
-    minTop = Math.min(minTop, top)
-  }
-
-  if (coveredArea <= 0) {
-    return null
-  }
-
-  if (coveredArea / footprintArea < LOCAL_SUPPORT_MIN_COVERAGE) {
-    return null
-  }
-
-  if (maxTop - minTop > LOCAL_SUPPORT_HEIGHT_TOLERANCE) {
-    return null
-  }
-
-  return maxTop
+  return bestCandidate
 }
 
 function getPlacementFootprintOverlap(
@@ -1167,6 +1084,8 @@ function findPlacementCandidate({
   orientation,
   fragility,
   strategy,
+  productId,
+  allowNewLayer,
 }: {
   layers: LayerFrame[]
   placements: PackedPlacement[]
@@ -1174,19 +1093,31 @@ function findPlacementCandidate({
   orientation: Dimensions
   fragility: Product['fragility']
   strategy: PackingStrategy
+  productId: string
+  allowNewLayer: boolean
 }): PlacementCandidate | null {
   let bestCandidate: PlacementCandidate | null = null
-  const totalHeight = layers.reduce((sum, layer) => sum + layer.height, 0)
   const tuning = getStrategyPlacementTuning(strategy)
 
   for (const [layerIndex, layer] of layers.entries()) {
-    const layerHeightDelta = Math.max(orientation.height - layer.height, 0)
-
-    if (totalHeight + layerHeightDelta > bounds.height) {
+    if (orientation.height !== layer.height) {
       continue
     }
 
+    const layerPlacements = placements.filter(
+      (placement) => placement.layerIndex === layerIndex,
+    )
+    const sameProductLayerCount = layerPlacements.filter(
+      (placement) => placement.productId === productId,
+    ).length
+
     for (const [rowIndex, row] of layer.rows.entries()) {
+      const rowPlacements = layerPlacements.filter(
+        (placement) => placement.rowIndex === rowIndex,
+      )
+      const sameProductRowCount = rowPlacements.filter(
+        (placement) => placement.productId === productId,
+      ).length
       const rowDepthDelta = Math.max(orientation.width - row.depth, 0)
       const usedWidth =
         layer.rows.reduce((sum, currentRow) => sum + currentRow.depth, 0) + rowDepthDelta
@@ -1218,7 +1149,6 @@ function findPlacementCandidate({
           z: layer.z,
           orientation,
           rowDepthDelta,
-          layerHeightDelta,
           score:
             layerIndex * tuning.layerIndexPenalty +
             stackingFootprintPenalty(orientation, layerIndex, tuning) +
@@ -1226,7 +1156,8 @@ function findPlacementCandidate({
             depthSlack * tuning.depthSlackPenalty +
             row.y * 2 +
             rowDepthDelta * tuning.rowDepthPenalty +
-            layerHeightDelta * tuning.layerHeightPenalty +
+            mixedProductPenalty(layerPlacements, sameProductLayerCount, tuning) -
+            productGroupingBonus(sameProductLayerCount, sameProductRowCount, tuning) +
             layerSupportPenalty(fragility, layerIndex, strategy) +
             fragilityPenalty(fragility, orientation, strategy),
         }
@@ -1268,7 +1199,6 @@ function findPlacementCandidate({
         z: layer.z,
         orientation,
         rowDepthDelta: 0,
-        layerHeightDelta,
         score:
           layerIndex * tuning.layerIndexPenalty +
           stackingFootprintPenalty(orientation, layerIndex, tuning) +
@@ -1276,7 +1206,8 @@ function findPlacementCandidate({
           remainingWidth * tuning.widthPenalty +
           remainingLength * tuning.lengthPenalty +
           usedWidth * 4 +
-          layerHeightDelta * tuning.layerHeightPenalty +
+          mixedProductPenalty(layerPlacements, sameProductLayerCount, tuning) -
+          productGroupingBonus(sameProductLayerCount, 0, tuning) +
           layerSupportPenalty(fragility, layerIndex, strategy) +
           fragilityPenalty(fragility, orientation, strategy),
       }
@@ -1289,9 +1220,10 @@ function findPlacementCandidate({
     }
   }
 
-  const nextLayerZ = layers.reduce((sum, layer) => sum + layer.height, 0)
+  const nextLayerZ = getNextLayerZ(layers)
 
   if (
+    allowNewLayer &&
     layers.length < MAX_LAYERS &&
     nextLayerZ + orientation.height <= bounds.height &&
     orientation.length <= bounds.length &&
@@ -1309,24 +1241,23 @@ function findPlacementCandidate({
       const remainingLength = bounds.length - orientation.length
       const remainingWidth = bounds.width - orientation.width
       const candidate: PlacementCandidate = {
-      mode: 'new-layer' as const,
-      layerIndex: layers.length,
-      rowIndex: 0,
-      x: 0,
-      y: 0,
-      z: nextLayerZ,
-      orientation,
-      rowDepthDelta: 0,
-      layerHeightDelta: 0,
-      score:
-        layers.length * tuning.layerIndexPenalty +
-        stackingFootprintPenalty(orientation, layers.length, tuning) +
-        tuning.newLayerBase +
-        remainingWidth * tuning.widthPenalty +
-        remainingLength * tuning.lengthPenalty +
-        layerSupportPenalty(fragility, layers.length, strategy) +
-        fragilityPenalty(fragility, orientation, strategy),
-    }
+        mode: 'new-layer' as const,
+        layerIndex: layers.length,
+        rowIndex: 0,
+        x: 0,
+        y: 0,
+        z: nextLayerZ,
+        orientation,
+        rowDepthDelta: 0,
+        score:
+          layers.length * tuning.layerIndexPenalty +
+          stackingFootprintPenalty(orientation, layers.length, tuning) +
+          tuning.newLayerBase +
+          remainingWidth * tuning.widthPenalty +
+          remainingLength * tuning.lengthPenalty +
+          layerSupportPenalty(fragility, layers.length, strategy) +
+          fragilityPenalty(fragility, orientation, strategy),
+      }
 
       const currentScore = bestCandidate?.score ?? Number.POSITIVE_INFINITY
 
@@ -1356,10 +1287,17 @@ function hasValidSupportBase({
     return true
   }
 
-  const candidateFootprint = orientation.length * orientation.width
-  let maxSupportingFootprint = 0
+  const lowerPlacements = placements.filter(
+    (placement) => placement.layerIndex === layerIndex - 1,
+  )
+  if (lowerPlacements.length === 0) {
+    return false
+  }
 
-  for (const placement of placements) {
+  const candidateFootprint = orientation.length * orientation.width
+  let coveredArea = 0
+
+  for (const placement of lowerPlacements) {
     const overlap = getPlacementFootprintOverlap(
       {
         x,
@@ -1374,13 +1312,18 @@ function hasValidSupportBase({
       continue
     }
 
-    maxSupportingFootprint = Math.max(
-      maxSupportingFootprint,
-      placement.length * placement.width,
-    )
+    coveredArea += overlap.length * overlap.width
   }
 
-  return maxSupportingFootprint >= candidateFootprint
+  if (coveredArea / candidateFootprint < LOCAL_SUPPORT_MIN_COVERAGE) {
+    return false
+  }
+
+  const lowerLayerArea = getLayerFootprintArea(placements, layerIndex - 1)
+  const nextLayerArea =
+    getLayerFootprintArea(placements, layerIndex) + candidateFootprint
+
+  return lowerLayerArea > nextLayerArea
 }
 
 function centerPackedContent(
@@ -1412,34 +1355,6 @@ function centerPackedContent(
       ...layer,
       z: layer.z,
     })),
-  }
-}
-
-function expandLayerHeight({
-  layers,
-  placements,
-  layerIndex,
-  delta,
-}: {
-  layers: LayerFrame[]
-  placements: PackedPlacement[]
-  layerIndex: number
-  delta: number
-}) {
-  if (delta <= 0) {
-    return
-  }
-
-  layers[layerIndex].height += delta
-
-  for (let index = layerIndex + 1; index < layers.length; index += 1) {
-    layers[index].z += delta
-  }
-
-  for (const placement of placements) {
-    if (placement.layerIndex > layerIndex) {
-      placement.z += delta
-    }
   }
 }
 
@@ -1498,10 +1413,10 @@ function getOrientations(unit: OrderUnit, strategy: PackingStrategy): Dimensions
     }
 
     if (left.height !== right.height) {
-      return left.height - right.height
+      return right.height - left.height
     }
 
-    return right.length * right.width - left.length * left.width
+    return left.length * left.width - right.length * right.width
   })
 }
 
@@ -1529,13 +1444,6 @@ function scoreStability({
     .reduce((sum, placement) => sum + placement.weight, 0)
 
   const lowerHalfRatio = lowerHalfWeight / totalWeight
-  const tallOrientationPenalty = placements.reduce((sum, placement) => {
-    if (placement.height > placement.length && placement.height > placement.width) {
-      return sum + 4
-    }
-
-    return sum
-  }, 0)
   const fillRatio = placements.reduce(
     (sum, placement) => sum + placement.length * placement.width * placement.height,
     0,
@@ -1547,8 +1455,7 @@ function scoreStability({
       lowerHalfRatio * 18 -
       weightedCenterHeight * 22 -
       Math.max(layers.length - 1, 0) * 5 -
-      Math.max(0, (0.58 - fillRatio) * 42) -
-      tallOrientationPenalty,
+      Math.max(0, (0.58 - fillRatio) * 42),
   )
 
   return clamp(stability, 1, 99)
@@ -1559,14 +1466,18 @@ function fragilityPenalty(
   orientation: Dimensions,
   strategy: PackingStrategy,
 ): number {
-  const standingPenaltyFactor = strategy === 'compact' ? 130 : 200
-  const heightPenaltyFactor = strategy === 'compact' ? 3 : 5
-  const standingPenalty =
-    orientation.height > Math.min(orientation.length, orientation.width)
-      ? getFragilityRank(fragility) * standingPenaltyFactor
-      : 0
+  const fragilityRank = getFragilityRank(fragility)
+  const verticalBonusFactor = strategy === 'compact' ? 11 : 9
+  const flatPenaltyFactor = strategy === 'compact' ? 14 : 16
+  const footprintPenaltyFactor = strategy === 'compact' ? 0.05 : 0.07
+  const tallestBaseEdge = Math.max(orientation.length, orientation.width)
+  const heightDeficit = Math.max(tallestBaseEdge - orientation.height, 0)
+  const heightBonus = orientation.height * verticalBonusFactor
+  const flatPenalty = heightDeficit * flatPenaltyFactor * fragilityRank
+  const footprintPenalty =
+    orientation.length * orientation.width * footprintPenaltyFactor
 
-  return standingPenalty + orientation.height * heightPenaltyFactor
+  return flatPenalty + footprintPenalty - heightBonus
 }
 
 function layerSupportPenalty(
@@ -1650,6 +1561,9 @@ function getStrategyPlacementTuning(strategy: PackingStrategy) {
       layerHeightPenalty: 42,
       newRowBase: 150_000,
       newLayerBase: 600_000,
+      sameProductLayerBonus: 8_500,
+      sameProductRowBonus: 5_000,
+      mixedProductLayerPenalty: 4_200,
     }
   }
 
@@ -1663,6 +1577,9 @@ function getStrategyPlacementTuning(strategy: PackingStrategy) {
     layerHeightPenalty: 24,
     newRowBase: 120_000,
     newLayerBase: 520_000,
+    sameProductLayerBonus: 6_500,
+    sameProductRowBonus: 3_500,
+    mixedProductLayerPenalty: 2_400,
   }
 }
 
@@ -1676,6 +1593,55 @@ function stackingFootprintPenalty(
   }
 
   return orientation.length * orientation.width * tuning.upperLayerFootprintPenalty
+}
+
+function getStackTop(layers: LayerFrame[]) {
+  if (layers.length === 0) {
+    return 0
+  }
+
+  const topLayer = layers[layers.length - 1]
+
+  return topLayer.z + topLayer.height
+}
+
+function getNextLayerZ(layers: LayerFrame[]) {
+  if (layers.length === 0) {
+    return 0
+  }
+
+  return getStackTop(layers) + LAYER_SEPARATOR_HEIGHT
+}
+
+function getLayerFootprintArea(placements: PackedPlacement[], layerIndex: number) {
+  return placements.reduce((sum, placement) => {
+    if (placement.layerIndex !== layerIndex) {
+      return sum
+    }
+
+    return sum + placement.length * placement.width
+  }, 0)
+}
+
+function productGroupingBonus(
+  sameProductLayerCount: number,
+  sameProductRowCount: number,
+  tuning: ReturnType<typeof getStrategyPlacementTuning>,
+) {
+  return (
+    sameProductLayerCount * tuning.sameProductLayerBonus +
+    sameProductRowCount * tuning.sameProductRowBonus
+  )
+}
+
+function mixedProductPenalty(
+  layerPlacements: PackedPlacement[],
+  sameProductLayerCount: number,
+  tuning: ReturnType<typeof getStrategyPlacementTuning>,
+) {
+  return layerPlacements.length > 0 && sameProductLayerCount === 0
+    ? tuning.mixedProductLayerPenalty
+    : 0
 }
 
 function buildSplitRecommendation(

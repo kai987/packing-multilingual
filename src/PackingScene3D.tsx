@@ -4,6 +4,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { Vector3 } from 'three'
 import {
+  LAYER_SEPARATOR_HEIGHT,
   buildVoidFillBlocks,
   getDisplayItemWrapKind,
   getDisplayItemWrapPadding,
@@ -284,22 +285,33 @@ function PackingMeshes({
         const x = mmToSceneUnits(recommendation.cushion.sidePadding + placement.x)
         const y = mmToSceneUnits(recommendation.cushion.sidePadding + placement.y)
         const z = mmToSceneUnits(recommendation.bottomFillHeight + placement.z)
-        const sideWrap = mmToSceneUnits(
-          Math.min(
-            itemWrapPadding.side,
-            placement.length * 0.18,
-            placement.width * 0.18,
-          ),
-        )
-        const verticalWrap = mmToSceneUnits(
-          Math.min(itemWrapPadding.vertical, placement.height * 0.18),
-        )
+        const hasItemWrap = placement.useItemWrap
+        const sideWrap = hasItemWrap
+          ? mmToSceneUnits(
+              Math.min(
+                itemWrapPadding.side,
+                placement.length * 0.18,
+                placement.width * 0.18,
+              ),
+            )
+          : 0
+        const verticalWrap = hasItemWrap
+          ? mmToSceneUnits(
+              Math.min(itemWrapPadding.vertical, placement.height * 0.18),
+            )
+          : 0
         const shellLength = length
         const shellHeight = height
         const shellWidth = width
-        const coreHeight = Math.max(height - verticalWrap * 2, height * 0.58)
-        const coreLength = Math.max(length - sideWrap * 2, length * 0.58)
-        const coreWidth = Math.max(width - sideWrap * 2, width * 0.58)
+        const coreHeight = hasItemWrap
+          ? Math.max(height - verticalWrap * 2, height * 0.58)
+          : height
+        const coreLength = hasItemWrap
+          ? Math.max(length - sideWrap * 2, length * 0.58)
+          : length
+        const coreWidth = hasItemWrap
+          ? Math.max(width - sideWrap * 2, width * 0.58)
+          : width
         const position = getBlockPosition({
           cartonX: dims.cartonX,
           cartonZ: dims.cartonZ,
@@ -322,18 +334,57 @@ function PackingMeshes({
               />
               <Edges color="#fff7ef" />
             </mesh>
-            <mesh renderOrder={3}>
-              <boxGeometry args={[shellLength, shellHeight, shellWidth]} />
-              <meshStandardMaterial
-                color={itemWrapKind === 'paper-fill' ? '#ceb08b' : '#e5c39f'}
-                transparent
-                opacity={itemWrapKind === 'paper-fill' ? 0.16 : 0.14}
-                depthWrite={false}
-                roughness={0.92}
-              />
-              <Edges color={itemWrapKind === 'paper-fill' ? '#9f7a52' : '#c69063'} />
-            </mesh>
+            {hasItemWrap ? (
+              <mesh renderOrder={3}>
+                <boxGeometry args={[shellLength, shellHeight, shellWidth]} />
+                <meshStandardMaterial
+                  color={itemWrapKind === 'paper-fill' ? '#ceb08b' : '#e5c39f'}
+                  transparent
+                  opacity={itemWrapKind === 'paper-fill' ? 0.16 : 0.14}
+                  depthWrite={false}
+                  roughness={0.92}
+                />
+                <Edges color={itemWrapKind === 'paper-fill' ? '#9f7a52' : '#c69063'} />
+              </mesh>
+            ) : null}
           </group>
+        )
+      })}
+
+      {recommendation.layers.slice(0, -1).map((layer) => {
+        const separatorHeight = mmToSceneUnits(LAYER_SEPARATOR_HEIGHT)
+        const separatorLength = dims.effectiveX
+        const separatorWidth = dims.effectiveZ
+        const x = dims.sidePadding
+        const y = dims.sidePadding
+        const z = mmToSceneUnits(
+          recommendation.bottomFillHeight + layer.z + layer.height,
+        )
+
+        return (
+          <mesh
+            key={`layer-separator-${layer.index}`}
+            position={getBlockPosition({
+              cartonX: dims.cartonX,
+              cartonZ: dims.cartonZ,
+              x,
+              y,
+              z,
+              length: separatorLength,
+              width: separatorWidth,
+              height: separatorHeight,
+            })}
+            renderOrder={1}
+          >
+            <boxGeometry args={[separatorLength, separatorHeight, separatorWidth]} />
+            <meshStandardMaterial
+              color="#e7d1ad"
+              transparent
+              opacity={0.24}
+              roughness={0.94}
+            />
+            <Edges color="#b89061" />
+          </mesh>
         )
       })}
 

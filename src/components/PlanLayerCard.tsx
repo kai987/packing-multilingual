@@ -95,14 +95,13 @@ export function PlanLayerCard({
           const widthRate = placement.length / recommendation.carton.inner.length
           const heightRate = placement.width / recommendation.carton.inner.width
           const compactClass = getCompactClass(widthRate, heightRate)
-          const insetXPercent = Math.min(
-            (itemWrapPadding.side / placement.length) * 100,
-            18,
-          )
-          const insetYPercent = Math.min(
-            (itemWrapPadding.side / placement.width) * 100,
-            18,
-          )
+          const hasItemWrap = placement.useItemWrap
+          const insetXPercent = hasItemWrap
+            ? Math.min((itemWrapPadding.side / placement.length) * 100, 18)
+            : 0
+          const insetYPercent = hasItemWrap
+            ? Math.min((itemWrapPadding.side / placement.width) * 100, 18)
+            : 0
           const placementDimensions = formatDimensions(
             {
               length: placement.length,
@@ -115,7 +114,7 @@ export function PlanLayerCard({
           return (
             <div
               key={placement.instanceId}
-              className={`plan-item-shell is-${itemWrapKind}${compactClass}`}
+              className={`plan-item-shell ${hasItemWrap ? `is-${itemWrapKind}` : 'is-no-wrap'}${compactClass}`}
               title={`${placement.name} / ${placementDimensions}`}
               style={{
                 backgroundColor: placement.color,

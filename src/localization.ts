@@ -164,6 +164,300 @@ const productCopyById: Partial<Record<string, ProductCopy>> = {
 }
 
 const cartonCopyById: Partial<Record<string, CartonCopy>> = {
+  'ma60-033': {
+    label: {
+      ja: '60サイズ No.1',
+      zh: '60 尺寸 No.1',
+      en: 'Size 60 No.1',
+    },
+    service: {
+      ja: 'ダンボール表',
+      zh: '纸箱表',
+      en: 'Cardboard box table',
+    },
+    note: {
+      ja: '画像表の内寸 222 x 167 x 155 mm。容積重量 1.5 kg。',
+      zh: '图片表格内尺寸 222 x 167 x 155 mm，容积重量 1.5 kg。',
+      en: 'Image table inner dimensions: 222 x 167 x 155 mm. Volumetric weight: 1.5 kg.',
+    },
+  },
+  'ma80-1538': {
+    label: {
+      ja: '80サイズ No.2',
+      zh: '80 尺寸 No.2',
+      en: 'Size 80 No.2',
+    },
+    service: {
+      ja: 'ダンボール表',
+      zh: '纸箱表',
+      en: 'Cardboard box table',
+    },
+    note: {
+      ja: '画像表の内寸 280 x 200 x 220 mm。容積重量 2.2 kg。',
+      zh: '图片表格内尺寸 280 x 200 x 220 mm，容积重量 2.2 kg。',
+      en: 'Image table inner dimensions: 280 x 200 x 220 mm. Volumetric weight: 2.2 kg.',
+    },
+  },
+  'ma80-059': {
+    label: {
+      ja: '80サイズ No.3',
+      zh: '80 尺寸 No.3',
+      en: 'Size 80 No.3',
+    },
+    service: {
+      ja: 'ダンボール表',
+      zh: '纸箱表',
+      en: 'Cardboard box table',
+    },
+    note: {
+      ja: '画像表の内寸 300 x 300 x 150 mm。容積重量 3.2 kg。',
+      zh: '图片表格内尺寸 300 x 300 x 150 mm，容积重量 3.2 kg。',
+      en: 'Image table inner dimensions: 300 x 300 x 150 mm. Volumetric weight: 3.2 kg.',
+    },
+  },
+  'ma100-531': {
+    label: {
+      ja: '100サイズ No.4',
+      zh: '100 尺寸 No.4',
+      en: 'Size 100 No.4',
+    },
+    service: {
+      ja: 'ダンボール表',
+      zh: '纸箱表',
+      en: 'Cardboard box table',
+    },
+    note: {
+      ja: '画像表の内寸 350 x 260 x 200 mm。容積重量 4.3 kg。',
+      zh: '图片表格内尺寸 350 x 260 x 200 mm，容积重量 4.3 kg。',
+      en: 'Image table inner dimensions: 350 x 260 x 200 mm. Volumetric weight: 4.3 kg.',
+    },
+  },
+  'ma100-078': {
+    label: {
+      ja: '100サイズ No.5',
+      zh: '100 尺寸 No.5',
+      en: 'Size 100 No.5',
+    },
+    service: {
+      ja: 'ダンボール表',
+      zh: '纸箱表',
+      en: 'Cardboard box table',
+    },
+    note: {
+      ja: '画像表の内寸 400 x 300 x 150 mm。容積重量 4.3 kg。',
+      zh: '图片表格内尺寸 400 x 300 x 150 mm，容积重量 4.3 kg。',
+      en: 'Image table inner dimensions: 400 x 300 x 150 mm. Volumetric weight: 4.3 kg.',
+    },
+  },
+  'ma100-371': {
+    label: {
+      ja: '100サイズ No.7',
+      zh: '100 尺寸 No.7',
+      en: 'Size 100 No.7',
+    },
+    service: {
+      ja: 'ダンボール表',
+      zh: '纸箱表',
+      en: 'Cardboard box table',
+    },
+    note: {
+      ja: '画像表の内寸 420 x 310 x 230 mm。容積重量 6.8 kg。',
+      zh: '图片表格内尺寸 420 x 310 x 230 mm，容积重量 6.8 kg。',
+      en: 'Image table inner dimensions: 420 x 310 x 230 mm. Volumetric weight: 6.8 kg.',
+    },
+  },
+  'ma100-1450': {
+    label: {
+      ja: '100サイズ No.8',
+      zh: '100 尺寸 No.8',
+      en: 'Size 100 No.8',
+    },
+    service: {
+      ja: 'ダンボール表',
+      zh: '纸箱表',
+      en: 'Cardboard box table',
+    },
+    note: {
+      ja: '画像表の内寸 300 x 300 x 300 mm。容積重量 6.9 kg。',
+      zh: '图片表格内尺寸 300 x 300 x 300 mm，容积重量 6.9 kg。',
+      en: 'Image table inner dimensions: 300 x 300 x 300 mm. Volumetric weight: 6.9 kg.',
+    },
+  },
+  'ma120-991': {
+    label: {
+      ja: '120サイズ No.10',
+      zh: '120 尺寸 No.10',
+      en: 'Size 120 No.10',
+    },
+    service: {
+      ja: 'ダンボール表',
+      zh: '纸箱表',
+      en: 'Cardboard box table',
+    },
+    note: {
+      ja: '画像表の内寸 350 x 350 x 350 mm。容積重量 9.5 kg。',
+      zh: '图片表格内尺寸 350 x 350 x 350 mm，容积重量 9.5 kg。',
+      en: 'Image table inner dimensions: 350 x 350 x 350 mm. Volumetric weight: 9.5 kg.',
+    },
+  },
+  'custom-120-11': {
+    code: {
+      ja: 'オーダーメイド',
+      zh: '定制箱',
+      en: 'Custom Box',
+    },
+    label: {
+      ja: '120サイズ No.11',
+      zh: '120 尺寸 No.11',
+      en: 'Size 120 No.11',
+    },
+    service: {
+      ja: 'ダンボール表',
+      zh: '纸箱表',
+      en: 'Cardboard box table',
+    },
+    note: {
+      ja: '画像表の内寸 545 x 330 x 295 mm。外寸欄は厚手表記。容積重量 11.9 kg。',
+      zh: '图片表格内尺寸 545 x 330 x 295 mm，外尺寸栏标注厚款，容积重量 11.9 kg。',
+      en: 'Image table inner dimensions: 545 x 330 x 295 mm. The outer dimensions are marked as thick-wall. Volumetric weight: 11.9 kg.',
+    },
+  },
+  'ma120-974': {
+    label: {
+      ja: '120サイズ No.12',
+      zh: '120 尺寸 No.12',
+      en: 'Size 120 No.12',
+    },
+    service: {
+      ja: 'ダンボール表',
+      zh: '纸箱表',
+      en: 'Cardboard box table',
+    },
+    note: {
+      ja: '画像表の内寸 450 x 350 x 350 mm。外寸欄は厚手表記。容積重量 12.2 kg。',
+      zh: '图片表格内尺寸 450 x 350 x 350 mm，外尺寸栏标注厚款，容积重量 12.2 kg。',
+      en: 'Image table inner dimensions: 450 x 350 x 350 mm. The outer dimensions are marked as thick-wall. Volumetric weight: 12.2 kg.',
+    },
+  },
+  'ma140-643': {
+    label: {
+      ja: '140サイズ No.14',
+      zh: '140 尺寸 No.14',
+      en: 'Size 140 No.14',
+    },
+    service: {
+      ja: 'ダンボール表',
+      zh: '纸箱表',
+      en: 'Cardboard box table',
+    },
+    note: {
+      ja: '画像表の内寸 500 x 400 x 400 mm。容積重量 19.1 kg。',
+      zh: '图片表格内尺寸 500 x 400 x 400 mm，容积重量 19.1 kg。',
+      en: 'Image table inner dimensions: 500 x 400 x 400 mm. Volumetric weight: 19.1 kg.',
+    },
+  },
+  dhl8: {
+    label: {
+      ja: '140サイズ',
+      zh: '140 尺寸',
+      en: 'Size 140',
+    },
+    service: {
+      ja: 'DHL',
+      zh: 'DHL',
+      en: 'DHL',
+    },
+    note: {
+      ja: '画像表の外寸 540 x 450 x 420 mm から各辺 20mm を差し引いて内寸を推定。容積重量 20.3 kg。',
+      zh: '根据图片表格外尺寸 540 x 450 x 420 mm，每边减去 20mm 推算内尺寸。容积重量 20.3 kg。',
+      en: 'Estimated inner dimensions by subtracting 20 mm from each listed outer dimension, 540 x 450 x 420 mm. Volumetric weight: 20.3 kg.',
+    },
+  },
+  dhl7: {
+    label: {
+      ja: '130サイズ',
+      zh: '130 尺寸',
+      en: 'Size 130',
+    },
+    service: {
+      ja: 'DHL',
+      zh: 'DHL',
+      en: 'DHL',
+    },
+    note: {
+      ja: '画像表の外寸 480 x 410 x 400 mm から各辺 20mm を差し引いて内寸を推定。容積重量 15.7 kg。',
+      zh: '根据图片表格外尺寸 480 x 410 x 400 mm，每边减去 20mm 推算内尺寸。容积重量 15.7 kg。',
+      en: 'Estimated inner dimensions by subtracting 20 mm from each listed outer dimension, 480 x 410 x 400 mm. Volumetric weight: 15.7 kg.',
+    },
+  },
+  dhl6: {
+    label: {
+      ja: '120サイズ',
+      zh: '120 尺寸',
+      en: 'Size 120',
+    },
+    service: {
+      ja: 'DHL',
+      zh: 'DHL',
+      en: 'DHL',
+    },
+    note: {
+      ja: '画像表の外寸 420 x 370 x 370 mm から各辺 20mm を差し引いて内寸を推定。容積重量 11.4 kg。',
+      zh: '根据图片表格外尺寸 420 x 370 x 370 mm，每边减去 20mm 推算内尺寸。容积重量 11.4 kg。',
+      en: 'Estimated inner dimensions by subtracting 20 mm from each listed outer dimension, 420 x 370 x 370 mm. Volumetric weight: 11.4 kg.',
+    },
+  },
+  dhl5: {
+    label: {
+      ja: '100サイズ',
+      zh: '100 尺寸',
+      en: 'Size 100',
+    },
+    service: {
+      ja: 'DHL',
+      zh: 'DHL',
+      en: 'DHL',
+    },
+    note: {
+      ja: '画像表の外寸 340 x 320 x 340 mm から各辺 20mm を差し引いて内寸を推定。容積重量 7.4 kg。',
+      zh: '根据图片表格外尺寸 340 x 320 x 340 mm，每边减去 20mm 推算内尺寸。容积重量 7.4 kg。',
+      en: 'Estimated inner dimensions by subtracting 20 mm from each listed outer dimension, 340 x 320 x 340 mm. Volumetric weight: 7.4 kg.',
+    },
+  },
+  dhl4: {
+    label: {
+      ja: '86サイズ',
+      zh: '86 尺寸',
+      en: 'Size 86',
+    },
+    service: {
+      ja: 'DHL',
+      zh: 'DHL',
+      en: 'DHL',
+    },
+    note: {
+      ja: '画像表の外寸 340 x 330 x 190 mm から各辺 20mm を差し引いて内寸を推定。容積重量 4.2 kg。',
+      zh: '根据图片表格外尺寸 340 x 330 x 190 mm，每边减去 20mm 推算内尺寸。容积重量 4.2 kg。',
+      en: 'Estimated inner dimensions by subtracting 20 mm from each listed outer dimension, 340 x 330 x 190 mm. Volumetric weight: 4.2 kg.',
+    },
+  },
+  'fedex-small': {
+    label: {
+      ja: 'Small',
+      zh: 'Small',
+      en: 'Small',
+    },
+    service: {
+      ja: 'FedEx',
+      zh: 'FedEx',
+      en: 'FedEx',
+    },
+    note: {
+      ja: '画像表の外寸 330 x 260 x 330 mm から各辺 20mm を差し引いて内寸を推定。容積重量 5.6 kg。',
+      zh: '根据图片表格外尺寸 330 x 260 x 330 mm，每边减去 20mm 推算内尺寸。容积重量 5.6 kg。',
+      en: 'Estimated inner dimensions by subtracting 20 mm from each listed outer dimension, 330 x 260 x 330 mm. Volumetric weight: 5.6 kg.',
+    },
+  },
   'yamato-compact-box': {
     code: {
       ja: '宅急便コンパクト',
@@ -366,7 +660,7 @@ const appText = {
       ],
     },
     order: {
-      eyebrow: '1. 注文商品',
+      eyebrow: '注文商品',
       title: '商品数量を調整',
       sampleButton: 'サンプル注文',
       clearButton: 'すべて0にする',
@@ -387,7 +681,7 @@ const appText = {
       itemWrapDisableAction: '緩衝材を外す',
     },
     recommendations: {
-      eyebrow: '3. 推奨結果',
+      eyebrow: '推奨結果',
       title: '箱候補を比較',
       emptyNoItemsTitle: '商品数量が 0 です。',
       emptyNoItemsBody: '左側で数量を入力すると推奨箱が表示されます。',
@@ -411,7 +705,7 @@ const appText = {
         '箱内の姿勢と下段の安定を優先し、壊れやすい商品をより保守的に扱います。',
     },
     selectedPlan: {
-      eyebrow: '4. 採用案の詳細',
+      eyebrow: '採用案の詳細',
       serviceLabel: '適用サービス',
       strategyLabel: '梱包方針',
       metrics: {
@@ -429,7 +723,7 @@ const appText = {
       },
     },
     comparison: {
-      eyebrow: '5. 単箱と分割案の比較',
+      eyebrow: '単箱と分割案の比較',
       title: '整体利用率を見比べる',
       singleBest: '単箱最良',
       splitBest: (boxCount: number) => `${boxCount}箱分割最良`,
@@ -448,7 +742,7 @@ const appText = {
       },
     },
     plan: {
-      eyebrow: '6. 装箱プラン',
+      eyebrow: '装箱プラン',
       title: '箱内立体図と俯視図',
       threeDTitle: '箱内立体図（概略）',
       threeDHint: 'マウスでドラッグして角度変更、ホイールで拡大縮小できます',
@@ -481,7 +775,7 @@ const appText = {
         `x ${x} / y ${y} / 向き ${orientation}`,
     },
     split: {
-      eyebrow: '7. 分割発送案',
+      eyebrow: '分割発送案',
       title: '分割発送の候補',
       emptyTitle: '分割発送案はまだ作成されていません。',
       emptyBody: '現在の注文内容では比較対象がありません。',
@@ -504,13 +798,13 @@ const appText = {
       },
     },
     catalog: {
-      eyebrow: '8. ヤマト運輸箱規格と緩衝材',
+      eyebrow: 'ヤマト運輸箱規格と緩衝材',
       title: '公式資材マスタ',
       cartonTitle: 'ヤマト運輸 公式箱マスタ',
       service: '配送サービス',
       outerDimensions: '外寸',
       innerDimensions: '内寸',
-      maxWeight: '重量上限',
+      maxWeight: '容積重量',
       noWeightLimit: '公式案内では制限なし',
       materialPrice: '資材価格',
       cushionTitle: '緩衝材ルール',
@@ -519,7 +813,7 @@ const appText = {
       stabilityBonus: '安定性ボーナス',
     },
     nextData: {
-      eyebrow: '9. 実運用に必要な次データ',
+      eyebrow: '実運用に必要な次データ',
       title: 'ここを本番データに置き換える',
       items: [
         '商品マスタ: SKUごとの実測寸法、重量、壊れやすさ、天地無用可否',
@@ -558,7 +852,7 @@ const appText = {
       ],
     },
     order: {
-      eyebrow: '1. 订单商品',
+      eyebrow: '订单商品',
       title: '调整商品数量',
       sampleButton: '示例订单',
       clearButton: '全部清零',
@@ -579,7 +873,7 @@ const appText = {
       itemWrapDisableAction: '取消缓冲包装',
     },
     recommendations: {
-      eyebrow: '3. 推荐结果',
+      eyebrow: '推荐结果',
       title: '比较箱型候选',
       emptyNoItemsTitle: '当前商品数量为 0。',
       emptyNoItemsBody: '在左侧输入数量后，这里会显示推荐箱型。',
@@ -601,7 +895,7 @@ const appText = {
       stableNote: '优先保证箱内姿态和底层稳定性，对易损商品采用更保守的处理。',
     },
     selectedPlan: {
-      eyebrow: '4. 采纳方案详情',
+      eyebrow: '采纳方案详情',
       serviceLabel: '适用服务',
       strategyLabel: '包装策略',
       metrics: {
@@ -619,7 +913,7 @@ const appText = {
       },
     },
     comparison: {
-      eyebrow: '5. 单箱与拆分方案对比',
+      eyebrow: '单箱与拆分方案对比',
       title: '比较整体利用率',
       singleBest: '单箱最佳',
       splitBest: (boxCount: number) => `${boxCount}箱拆分最佳`,
@@ -638,7 +932,7 @@ const appText = {
       },
     },
     plan: {
-      eyebrow: '6. 装箱方案',
+      eyebrow: '装箱方案',
       title: '箱内立体图与俯视图',
       threeDTitle: '箱内立体图（示意）',
       threeDHint: '可拖拽调整角度，滚轮缩放',
@@ -671,7 +965,7 @@ const appText = {
         `x ${x} / y ${y} / 摆放方向 ${orientation}`,
     },
     split: {
-      eyebrow: '7. 拆分发货方案',
+      eyebrow: '拆分发货方案',
       title: '拆分发货候选',
       emptyTitle: '暂时还没有生成拆分发货方案。',
       emptyBody: '按照当前订单内容，还没有可比较的拆分对象。',
@@ -694,13 +988,13 @@ const appText = {
       },
     },
     catalog: {
-      eyebrow: '8. Yamato 箱型规格与缓冲材',
+      eyebrow: 'Yamato 箱型规格与缓冲材',
       title: '官方资材主数据',
       cartonTitle: 'Yamato 官方纸箱主数据',
       service: '配送服务',
       outerDimensions: '外尺寸',
       innerDimensions: '内尺寸',
-      maxWeight: '重量上限',
+      maxWeight: '容积重量',
       noWeightLimit: '官方说明中未设置限制',
       materialPrice: '资材价格',
       cushionTitle: '缓冲材规则',
@@ -709,7 +1003,7 @@ const appText = {
       stabilityBonus: '稳定性加成',
     },
     nextData: {
-      eyebrow: '9. 真实落地还需要的数据',
+      eyebrow: '真实落地还需要的数据',
       title: '这些内容需要替换为正式数据',
       items: [
         '商品主数据：每个 SKU 的实测尺寸、重量、易损等级、是否可倒置',
@@ -748,7 +1042,7 @@ const appText = {
       ],
     },
     order: {
-      eyebrow: '1. Order Items',
+      eyebrow: 'Order Items',
       title: 'Adjust item quantities',
       sampleButton: 'Sample Order',
       clearButton: 'Set All to 0',
@@ -769,7 +1063,7 @@ const appText = {
       itemWrapDisableAction: 'Disable Cushioning',
     },
     recommendations: {
-      eyebrow: '3. Recommendations',
+      eyebrow: 'Recommendations',
       title: 'Compare carton options',
       emptyNoItemsTitle: 'All item quantities are 0.',
       emptyNoItemsBody: 'Enter quantities on the left to see recommended cartons.',
@@ -793,7 +1087,7 @@ const appText = {
         'Prioritizes in-box posture and lower-layer stability, and handles fragile products more conservatively.',
     },
     selectedPlan: {
-      eyebrow: '4. Selected Option Details',
+      eyebrow: 'Selected Option Details',
       serviceLabel: 'Service',
       strategyLabel: 'Packing strategy',
       metrics: {
@@ -811,7 +1105,7 @@ const appText = {
       },
     },
     comparison: {
-      eyebrow: '5. Single Box vs Split',
+      eyebrow: 'Single Box vs Split',
       title: 'Compare overall utilization',
       singleBest: 'Best Single Box',
       splitBest: (boxCount: number) => `Best ${boxCount}-Box Split`,
@@ -830,7 +1124,7 @@ const appText = {
       },
     },
     plan: {
-      eyebrow: '6. Packing Plan',
+      eyebrow: 'Packing Plan',
       title: '3D and top-down carton views',
       threeDTitle: '3D Carton View (Concept)',
       threeDHint: 'Drag to rotate and use the wheel to zoom',
@@ -863,7 +1157,7 @@ const appText = {
         `x ${x} / y ${y} / orientation ${orientation}`,
     },
     split: {
-      eyebrow: '7. Split Shipment Options',
+      eyebrow: 'Split Shipment Options',
       title: 'Split shipment candidates',
       emptyTitle: 'No split shipment options have been generated yet.',
       emptyBody: 'The current order does not produce a meaningful split comparison.',
@@ -886,13 +1180,13 @@ const appText = {
       },
     },
     catalog: {
-      eyebrow: '8. Yamato Cartons and Cushioning',
+      eyebrow: 'Yamato Cartons and Cushioning',
       title: 'Official Packaging Master',
       cartonTitle: 'Yamato Official Carton Master',
       service: 'Shipping Service',
       outerDimensions: 'Outer Size',
       innerDimensions: 'Inner Size',
-      maxWeight: 'Weight Limit',
+      maxWeight: 'Volumetric Weight',
       noWeightLimit: 'No limit listed in the official guidance',
       materialPrice: 'Material Cost',
       cushionTitle: 'Cushioning Rules',
@@ -901,7 +1195,7 @@ const appText = {
       stabilityBonus: 'Stability Bonus',
     },
     nextData: {
-      eyebrow: '9. Data Needed for Production',
+      eyebrow: 'Data Needed for Production',
       title: 'Replace these with production data',
       items: [
         'Product master: measured dimensions, weight, fragility, and upside-down handling rules per SKU',

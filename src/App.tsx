@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import {
   Linking,
   Platform,
@@ -55,6 +55,24 @@ const repositoryUrl = 'https://github.com/kai987/packing-multilingual'
 const PRODUCT_QUANTITY_MAX_DIGITS = 3
 const PRODUCT_DIMENSION_MAX_DIGITS = 3
 const PRODUCT_PRICE_MAX_DIGITS = 6
+const sectionNumberPrefixPattern = /^\d+\.\s*/
+const collapseActionLabels: Record<
+  SupportedLocale,
+  { collapse: string; expand: string }
+> = {
+  ja: {
+    collapse: 'セクションを折りたたむ',
+    expand: 'セクションを開く',
+  },
+  zh: {
+    collapse: '折叠模块',
+    expand: '展开模块',
+  },
+  en: {
+    collapse: 'Collapse section',
+    expand: 'Expand section',
+  },
+}
 
 type MetricItem = {
   label: string
@@ -62,6 +80,15 @@ type MetricItem = {
 }
 
 type PlanText = ReturnType<typeof getAppText>['plan']
+type NumberedSectionKey =
+  | 'order'
+  | 'recommendations'
+  | 'selectedPlan'
+  | 'plan'
+  | 'comparison'
+  | 'split'
+  | 'catalog'
+  | 'nextData'
 
 function cloneProducts(products: Product[]) {
   return products.map((product) => ({
@@ -100,17 +127,63 @@ function percent(value: number): `${number}%` {
   return `${Math.max(0, Math.min(100, value))}%` as `${number}%`
 }
 
+function formatNumberedSectionEyebrow(index: number, eyebrow: string) {
+  return `${index}. ${eyebrow.replace(sectionNumberPrefixPattern, '')}`
+}
+
+function getNumberedSectionEyebrows(
+  text: ReturnType<typeof getAppText>,
+  hasSelectedRecommendation: boolean,
+) {
+  const baseEyebrows: Record<NumberedSectionKey, string> = {
+    order: text.order.eyebrow,
+    recommendations: text.recommendations.eyebrow,
+    selectedPlan: text.selectedPlan.eyebrow,
+    plan: text.plan.eyebrow,
+    comparison: text.comparison.eyebrow,
+    split: text.split.eyebrow,
+    catalog: text.catalog.eyebrow,
+    nextData: text.nextData.eyebrow,
+  }
+  const visibleKeys: NumberedSectionKey[] = ['order', 'recommendations']
+
+  if (hasSelectedRecommendation) {
+    visibleKeys.push('selectedPlan')
+  }
+
+  visibleKeys.push('plan', 'comparison', 'split', 'catalog', 'nextData')
+
+  const numberedEyebrows = { ...baseEyebrows }
+
+  visibleKeys.forEach((key, index) => {
+    numberedEyebrows[key] = formatNumberedSectionEyebrow(
+      index + 1,
+      baseEyebrows[key],
+    )
+  })
+
+  return numberedEyebrows
+}
+
 function Section({
   eyebrow,
   title,
   children,
   actions,
+  isCollapsed = false,
+  onToggle,
+  toggleLabel,
 }: {
   eyebrow: string
-  title: string
-  children: React.ReactNode
-  actions?: React.ReactNode
+  title: ReactNode
+  children: ReactNode
+  actions?: ReactNode
+  isCollapsed?: boolean
+  onToggle?: () => void
+  toggleLabel?: string
 }) {
+  const canCollapse = Boolean(onToggle)
+
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
@@ -118,9 +191,30 @@ function Section({
           <Text style={styles.eyebrow}>{eyebrow}</Text>
           <Text style={styles.sectionTitle}>{title}</Text>
         </View>
-        {actions ? <View style={styles.sectionActions}>{actions}</View> : null}
+        {actions || canCollapse ? (
+          <View style={styles.sectionActions}>
+            {actions}
+            {canCollapse ? (
+              <Pressable
+                accessibilityLabel={toggleLabel}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: !isCollapsed }}
+                hitSlop={8}
+                onPress={onToggle}
+                style={({ pressed }) => [
+                  styles.collapseToggle,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.collapseToggleText}>
+                  {isCollapsed ? '+' : '-'}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
       </View>
-      {children}
+      {isCollapsed ? null : children}
     </View>
   )
 }
@@ -768,9 +862,20 @@ export default function App() {
   const [selectedSplitKey, setSelectedSplitKey] = useState<string | null>(null)
   const [viewSyncToken, setViewSyncToken] = useState(0)
   const [isSceneGestureActive, setIsSceneGestureActive] = useState(false)
+  const [isOrderCollapsed, setIsOrderCollapsed] = useState(false)
+  const [isRecommendationsCollapsed, setIsRecommendationsCollapsed] =
+    useState(false)
+  const [isSelectedSummaryCollapsed, setIsSelectedSummaryCollapsed] =
+    useState(false)
+  const [isPlanCollapsed, setIsPlanCollapsed] = useState(false)
+  const [isComparisonCollapsed, setIsComparisonCollapsed] = useState(false)
+  const [isSplitCollapsed, setIsSplitCollapsed] = useState(false)
+  const [isCatalogCollapsed, setIsCatalogCollapsed] = useState(false)
+  const [isNextDataCollapsed, setIsNextDataCollapsed] = useState(false)
   const { width } = useWindowDimensions()
   const isWide = width >= 900
   const text = getAppText(locale)
+  const collapseLabels = collapseActionLabels[locale]
   const localizedCatalog = useMemo(() => {
     const baseCatalog = getLocalizedCatalog(locale)
     const editableProductsById = new Map(
@@ -899,6 +1004,10 @@ export default function App() {
           recommendation: box.recommendation,
         }))
       : []
+  const sectionEyebrows = getNumberedSectionEyebrows(
+    text,
+    Boolean(selectedRecommendation),
+  )
   const productCardLabels = {
     dimensions: text.order.dimensions,
     dimensionsUnit: text.order.dimensionsUnit,
@@ -1186,8 +1295,13 @@ export default function App() {
           <View style={[styles.workspace, isWide && styles.workspaceWide]}>
             <View style={styles.workspaceColumn}>
               <Section
-                eyebrow={text.order.eyebrow}
+                eyebrow={sectionEyebrows.order}
                 title={text.order.title}
+                isCollapsed={isOrderCollapsed}
+                toggleLabel={
+                  isOrderCollapsed ? collapseLabels.expand : collapseLabels.collapse
+                }
+                onToggle={() => setIsOrderCollapsed((current) => !current)}
                 actions={
                   <>
                     <AppButton label={text.order.sampleButton} onPress={resetSample} />
@@ -1229,8 +1343,17 @@ export default function App() {
 
             <View style={styles.workspaceColumn}>
               <Section
-                eyebrow={text.recommendations.eyebrow}
+                eyebrow={sectionEyebrows.recommendations}
                 title={text.recommendations.title}
+                isCollapsed={isRecommendationsCollapsed}
+                toggleLabel={
+                  isRecommendationsCollapsed
+                    ? collapseLabels.expand
+                    : collapseLabels.collapse
+                }
+                onToggle={() =>
+                  setIsRecommendationsCollapsed((current) => !current)
+                }
               >
                 <View style={styles.strategySwitch}>
                   <AppButton
@@ -1301,8 +1424,17 @@ export default function App() {
 
               {selectedRecommendation ? (
                 <Section
-                  eyebrow={text.selectedPlan.eyebrow}
+                  eyebrow={sectionEyebrows.selectedPlan}
                   title={`${selectedRecommendation.carton.code} / ${selectedRecommendation.cushion.name}`}
+                  isCollapsed={isSelectedSummaryCollapsed}
+                  toggleLabel={
+                    isSelectedSummaryCollapsed
+                      ? collapseLabels.expand
+                      : collapseLabels.collapse
+                  }
+                  onToggle={() =>
+                    setIsSelectedSummaryCollapsed((current) => !current)
+                  }
                 >
                   <Text style={styles.serviceText}>
                     {text.selectedPlan.serviceLabel}:{' '}
@@ -1326,8 +1458,13 @@ export default function App() {
           </View>
 
           <Section
-            eyebrow={text.plan.eyebrow}
+            eyebrow={sectionEyebrows.plan}
             title={text.plan.title}
+            isCollapsed={isPlanCollapsed}
+            toggleLabel={
+              isPlanCollapsed ? collapseLabels.expand : collapseLabels.collapse
+            }
+            onToggle={() => setIsPlanCollapsed((current) => !current)}
             actions={
               visualizedPlanBoxes.length > 0 ? (
                 <AppButton
@@ -1386,7 +1523,17 @@ export default function App() {
             )}
           </Section>
 
-          <Section eyebrow={text.comparison.eyebrow} title={text.comparison.title}>
+          <Section
+            eyebrow={sectionEyebrows.comparison}
+            title={text.comparison.title}
+            isCollapsed={isComparisonCollapsed}
+            toggleLabel={
+              isComparisonCollapsed
+                ? collapseLabels.expand
+                : collapseLabels.collapse
+            }
+            onToggle={() => setIsComparisonCollapsed((current) => !current)}
+          >
             {bestSingleRecommendation && bestSplitRecommendation ? (
               <>
                 <View style={[styles.comparisonGrid, isWide && styles.comparisonGridWide]}>
@@ -1437,7 +1584,15 @@ export default function App() {
             )}
           </Section>
 
-          <Section eyebrow={text.split.eyebrow} title={text.split.title}>
+          <Section
+            eyebrow={sectionEyebrows.split}
+            title={text.split.title}
+            isCollapsed={isSplitCollapsed}
+            toggleLabel={
+              isSplitCollapsed ? collapseLabels.expand : collapseLabels.collapse
+            }
+            onToggle={() => setIsSplitCollapsed((current) => !current)}
+          >
             {splitRecommendations.length === 0 ? (
               <EmptyState title={text.split.emptyTitle} body={text.split.emptyBody} />
             ) : (
@@ -1510,7 +1665,15 @@ export default function App() {
             )}
           </Section>
 
-          <Section eyebrow={text.catalog.eyebrow} title={text.catalog.title}>
+          <Section
+            eyebrow={sectionEyebrows.catalog}
+            title={text.catalog.title}
+            isCollapsed={isCatalogCollapsed}
+            toggleLabel={
+              isCatalogCollapsed ? collapseLabels.expand : collapseLabels.collapse
+            }
+            onToggle={() => setIsCatalogCollapsed((current) => !current)}
+          >
             <View style={[styles.catalogGrid, isWide && styles.catalogGridWide]}>
               <View style={styles.catalogPanel}>
                 <Text style={styles.catalogTitle}>{text.catalog.cartonTitle}</Text>
@@ -1571,7 +1734,15 @@ export default function App() {
             </View>
           </Section>
 
-          <Section eyebrow={text.nextData.eyebrow} title={text.nextData.title}>
+          <Section
+            eyebrow={sectionEyebrows.nextData}
+            title={text.nextData.title}
+            isCollapsed={isNextDataCollapsed}
+            toggleLabel={
+              isNextDataCollapsed ? collapseLabels.expand : collapseLabels.collapse
+            }
+            onToggle={() => setIsNextDataCollapsed((current) => !current)}
+          >
             {text.nextData.items.map((item) => (
               <Text key={item} style={styles.bulletText}>
                 - {item}
@@ -1731,6 +1902,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  collapseToggle: {
+    alignItems: 'center',
+    backgroundColor: '#f7f8f4',
+    borderColor: '#cdd8cf',
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 38,
+    justifyContent: 'center',
+    width: 38,
+  },
+  collapseToggleText: {
+    color: '#17221d',
+    fontSize: 18,
+    fontWeight: '900',
+    lineHeight: 20,
   },
   appButton: {
     alignItems: 'center',

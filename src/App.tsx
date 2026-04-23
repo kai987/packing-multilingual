@@ -170,6 +170,7 @@ function Section({
   title,
   children,
   actions,
+  headerStacked = false,
   isCollapsed = false,
   onToggle,
   toggleLabel,
@@ -178,6 +179,7 @@ function Section({
   title: ReactNode
   children: ReactNode
   actions?: ReactNode
+  headerStacked?: boolean
   isCollapsed?: boolean
   onToggle?: () => void
   toggleLabel?: string
@@ -186,13 +188,28 @@ function Section({
 
   return (
     <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <View style={styles.sectionTitleGroup}>
+      <View
+        style={[
+          styles.sectionHeader,
+          headerStacked && styles.sectionHeaderStacked,
+        ]}
+      >
+        <View
+          style={[
+            styles.sectionTitleGroup,
+            headerStacked && styles.sectionTitleGroupStacked,
+          ]}
+        >
           <Text style={styles.eyebrow}>{eyebrow}</Text>
           <Text style={styles.sectionTitle}>{title}</Text>
         </View>
         {actions || canCollapse ? (
-          <View style={styles.sectionActions}>
+          <View
+            style={[
+              styles.sectionActions,
+              headerStacked && styles.sectionActionsStacked,
+            ]}
+          >
             {actions}
             {canCollapse ? (
               <Pressable
@@ -1300,6 +1317,7 @@ export default function App() {
               <Section
                 eyebrow={sectionEyebrows.order}
                 title={text.order.title}
+                headerStacked={isCompact}
                 isCollapsed={isOrderCollapsed}
                 toggleLabel={
                   isOrderCollapsed ? collapseLabels.expand : collapseLabels.collapse
@@ -1892,10 +1910,17 @@ const styles = StyleSheet.create({
     gap: 12,
     justifyContent: 'space-between',
   },
+  sectionHeaderStacked: {
+    flexDirection: 'column',
+  },
   sectionTitleGroup: {
     flex: 1,
     gap: 4,
     minWidth: 0,
+  },
+  sectionTitleGroupStacked: {
+    flex: 0,
+    width: '100%',
   },
   sectionTitle: {
     color: '#16221d',
@@ -1909,6 +1934,11 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     maxWidth: '100%',
+  },
+  sectionActionsStacked: {
+    alignSelf: 'stretch',
+    justifyContent: 'flex-start',
+    width: '100%',
   },
   collapseToggle: {
     alignItems: 'center',
@@ -1932,6 +1962,7 @@ const styles = StyleSheet.create({
     borderColor: '#cdd8cf',
     borderRadius: 8,
     borderWidth: 1,
+    flexShrink: 1,
     justifyContent: 'center',
     minHeight: 38,
     paddingHorizontal: 13,
@@ -1946,8 +1977,10 @@ const styles = StyleSheet.create({
   },
   appButtonText: {
     color: '#26332e',
+    flexShrink: 1,
     fontSize: 13,
     fontWeight: '800',
+    textAlign: 'center',
   },
   appButtonPrimaryText: {
     color: '#ffffff',

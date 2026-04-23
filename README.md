@@ -1,7 +1,6 @@
-# brick-packing frontend
+# brick-packing React Native app
 
-`Vite + React + TypeScript` で構成した、日本向け梱包プランナーのフロントエンド原型です。  
-<https://kai987.github.io/packing-multilingual/>
+Expo + React Native + TypeScript で構成した、日本向け梱包プランナーのアプリ原型です。
 
 この原型では、以下のような業務課題を想定しています。
 
@@ -13,48 +12,51 @@
 
 ## 現在の実装
 
-- React 19 + TypeScript 5.9
-- Vite 7
+- Expo SDK 55 + React Native 0.83 + React 19
+- TypeScript 5.9
+- iOS / Android / Web を同じ React Native UI で起動可能
 - 商品マスタ、箱規格マスタ、緩衝材ルールのサンプルデータ
 - 説明可能なフロントエンド側のヒューリスティック装箱アルゴリズム
-- 日本語 UI
-  - 商品数量の入力
-  - 箱規格と緩衝材の表示
-  - 推奨箱の比較
-  - 箱内の立体図と俯視図による可視化
-  - 単箱案と分割発送案の比較
+- 日本語 / 中文 / English UI
+- 商品数量、寸法、価格、個別包装の入力
+- 推奨箱、分割発送案、箱内 3D 図、箱内レイヤー俯瞰図、マスタ一覧の表示
+- `expo-gl` + `@react-three/fiber` + `three` による 3D プレビュー
 
 ## 起動方法
 
 ```bash
 npm install
-npm run dev
+npm run start
 ```
 
-開発サーバーのデフォルト URL:
+Expo CLI が起動したら、ターミナルの QR コードを Expo Go または開発ビルドで読み取ります。
 
-```text
-http://localhost:5173
+Web で確認する場合:
+
+```bash
+npm run web
 ```
 
 ## コマンド
 
-- `npm run dev`
-- `npm run build`
-- `npm run preview`
+- `npm run start`
+- `npm run android`
+- `npm run ios`
+- `npm run web`
+- `npm run typecheck`
 - `npm run lint`
 
 ## コード構成
 
 ```text
 src/
-├── App.tsx          # 業務 UI
-├── App.css          # ページスタイル
-├── data.ts          # 商品 / 箱 / 緩衝材のサンプルマスタ
-├── packing.ts       # 装箱推薦と評価ロジック
+├── App.tsx          # React Native UI
 ├── PackingScene3D.tsx
-├── index.css
-└── main.tsx
+├── data.ts          # 商品 / 箱 / 緩衝材のサンプルマスタ
+├── localization.ts  # 多言語テキストとローカライズ済みマスタ
+├── locale.ts        # ロケールと数値表示
+├── main.tsx         # Expo root component 登録
+└── packing.ts       # 装箱推薦と評価ロジック
 ```
 
 ## 今後の拡張候補

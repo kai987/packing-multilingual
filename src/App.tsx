@@ -185,6 +185,21 @@ function Section({
   toggleLabel?: string
 }) {
   const canCollapse = Boolean(onToggle)
+  const collapseControl = canCollapse ? (
+    <Pressable
+      accessibilityLabel={toggleLabel}
+      accessibilityRole="button"
+      accessibilityState={{ expanded: !isCollapsed }}
+      hitSlop={8}
+      onPress={onToggle}
+      style={({ pressed }) => [
+        styles.collapseToggle,
+        pressed && styles.pressed,
+      ]}
+    >
+      <Text style={styles.collapseToggleText}>{isCollapsed ? '+' : '-'}</Text>
+    </Pressable>
+  ) : null
 
   return (
     <View style={styles.section}>
@@ -194,42 +209,42 @@ function Section({
           headerStacked && styles.sectionHeaderStacked,
         ]}
       >
-        <View
-          style={[
-            styles.sectionTitleGroup,
-            headerStacked && styles.sectionTitleGroupStacked,
-          ]}
-        >
-          <Text style={styles.eyebrow}>{eyebrow}</Text>
-          <Text style={styles.sectionTitle}>{title}</Text>
-        </View>
-        {actions || canCollapse ? (
-          <View
-            style={[
-              styles.sectionActions,
-              headerStacked && styles.sectionActionsStacked,
-            ]}
-          >
-            {actions}
-            {canCollapse ? (
-              <Pressable
-                accessibilityLabel={toggleLabel}
-                accessibilityRole="button"
-                accessibilityState={{ expanded: !isCollapsed }}
-                hitSlop={8}
-                onPress={onToggle}
-                style={({ pressed }) => [
-                  styles.collapseToggle,
-                  pressed && styles.pressed,
+        {headerStacked ? (
+          <>
+            <View style={styles.sectionHeaderTitleRow}>
+              <View
+                style={[
+                  styles.sectionTitleGroup,
+                  styles.sectionTitleGroupStacked,
                 ]}
               >
-                <Text style={styles.collapseToggleText}>
-                  {isCollapsed ? '+' : '-'}
-                </Text>
-              </Pressable>
+                <Text style={styles.eyebrow}>{eyebrow}</Text>
+                <Text style={styles.sectionTitle}>{title}</Text>
+              </View>
+              {collapseControl}
+            </View>
+            {actions ? (
+              <View
+                style={[styles.sectionActions, styles.sectionActionsStacked]}
+              >
+                {actions}
+              </View>
             ) : null}
-          </View>
-        ) : null}
+          </>
+        ) : (
+          <>
+            <View style={styles.sectionTitleGroup}>
+              <Text style={styles.eyebrow}>{eyebrow}</Text>
+              <Text style={styles.sectionTitle}>{title}</Text>
+            </View>
+            {actions || collapseControl ? (
+              <View style={styles.sectionActions}>
+                {actions}
+                {collapseControl}
+              </View>
+            ) : null}
+          </>
+        )}
       </View>
       {isCollapsed ? null : children}
     </View>
@@ -1913,14 +1928,20 @@ const styles = StyleSheet.create({
   sectionHeaderStacked: {
     flexDirection: 'column',
   },
+  sectionHeaderTitleRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+    width: '100%',
+  },
   sectionTitleGroup: {
     flex: 1,
     gap: 4,
     minWidth: 0,
   },
   sectionTitleGroupStacked: {
-    flex: 0,
-    width: '100%',
+    flex: 1,
   },
   sectionTitle: {
     color: '#16221d',

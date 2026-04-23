@@ -7,7 +7,6 @@ import {
   type Recommendation,
 } from '@/packing'
 import type { getAppText } from '@/localization'
-import { SectionHeading } from '@/components/common'
 import { PlanLayerCard } from '@/components/PlanLayerCard'
 
 const PackingScene3D = lazy(() => import('@/PackingScene3D'))
@@ -89,9 +88,7 @@ export function SelectedPlanSection({
   }, [voidFillBlocks])
 
   return (
-    <section className="section-card plan-section-card">
-      <SectionHeading eyebrow={labels.eyebrow} title={labels.title} />
-
+    <>
       <article className="three-d-panel">
         <div className="layer-header three-d-panel-head">
           <div className="layer-header-copy">
@@ -138,6 +135,6 @@ export function SelectedPlanSection({
           />
         ))}
       </div>
-    </section>
+    </>
   )
 }

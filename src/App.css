@@ -208,6 +208,10 @@
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.95fr);
+  grid-template-areas:
+    "order order"
+    "recommendations recommendations"
+    "details details";
   gap: 1rem;
   align-items: start;
 }
@@ -225,6 +229,118 @@
   gap: 1rem;
   align-content: start;
   min-width: 0;
+}
+
+.left-column {
+  grid-area: order;
+}
+
+.right-column {
+  grid-area: details;
+}
+
+.recommendations-row {
+  grid-area: recommendations;
+}
+
+.collapsible-section {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    border-color 0.24s ease,
+    box-shadow 0.28s ease,
+    transform 0.24s ease,
+    background-color 0.24s ease;
+}
+
+.collapsible-section:hover {
+  border-color: rgba(124, 85, 56, 0.24);
+  box-shadow: 0 28px 78px rgba(91, 83, 67, 0.16);
+  transform: translateY(-1px);
+}
+
+.collapsible-section::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 92% 12%, rgba(196, 116, 65, 0.14), transparent 18%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent 42%);
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.collapsible-section:hover::after {
+  opacity: 1;
+}
+
+.collapsible-section .section-header {
+  position: relative;
+  z-index: 1;
+  transition: margin-bottom 0.24s ease;
+}
+
+.collapsible-section.is-collapsed .section-header {
+  margin-bottom: 0;
+}
+
+.collapsible-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.collapse-toggle {
+  display: grid;
+  place-items: center;
+  min-width: 48px;
+  width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: 999px;
+  background: rgba(249, 244, 237, 0.96);
+  color: #7c5538;
+}
+
+.collapse-icon {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(0.12rem) rotate(-135deg);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.collapsible-section.is-collapsed .collapse-icon {
+  transform: translateY(-0.12rem) rotate(45deg);
+}
+
+.collapsible-content {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    grid-template-rows 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s ease,
+    transform 0.28s ease;
+}
+
+.collapsible-content-inner {
+  overflow: hidden;
+}
+
+.collapsible-section.is-collapsed .collapsible-content {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-0.4rem);
 }
 
 .post-workspace {
@@ -387,6 +503,10 @@
 .product-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.9rem;
+}
+
+.order-row .product-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .product-card,
@@ -697,6 +817,7 @@
 }
 
 .recommendation-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.8rem;
 }
 
@@ -1228,6 +1349,13 @@
   .split-box-grid {
     grid-template-columns: 1fr;
   }
+
+  .workspace {
+    grid-template-areas:
+      "order"
+      "recommendations"
+      "details";
+  }
 }
 
 @media (min-width: 681px) and (max-width: 1080px) {
@@ -1251,6 +1379,10 @@
   }
 
   .product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .order-row .product-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1326,8 +1458,13 @@
 
   .hero-stats,
   .product-grid,
+  .recommendation-grid,
   .detail-grid,
   .recommend-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .order-row .product-grid {
     grid-template-columns: 1fr;
   }
 

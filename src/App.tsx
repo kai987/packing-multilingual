@@ -1,4 +1,5 @@
 import {
+  type ReactNode,
   useEffect,
   useMemo,
   useRef,
@@ -61,6 +62,150 @@ const repositoryAriaLabels: Record<SupportedLocale, string> = {
 const PRODUCT_QUANTITY_MAX_DIGITS = 3
 const PRODUCT_DIMENSION_MAX_DIGITS = 3
 const PRODUCT_PRICE_MAX_DIGITS = 6
+const sectionNumberPrefixPattern = /^\d+\.\s*/
+const collapseActionLabels: Record<
+  SupportedLocale,
+  { collapse: string; expand: string }
+> = {
+  ja: {
+    collapse: 'セクションを折りたたむ',
+    expand: 'セクションを開く',
+  },
+  zh: {
+    collapse: '折叠模块',
+    expand: '展开模块',
+  },
+  en: {
+    collapse: 'Collapse section',
+    expand: 'Expand section',
+  },
+}
+
+type NumberedSectionKey =
+  | 'order'
+  | 'recommendations'
+  | 'selectedPlan'
+  | 'comparison'
+  | 'plan'
+  | 'split'
+  | 'catalog'
+  | 'nextData'
+
+function formatNumberedSectionEyebrow(index: number, eyebrow: string) {
+  return `${index}. ${eyebrow.replace(sectionNumberPrefixPattern, '')}`
+}
+
+function getNumberedSectionEyebrows(
+  text: ReturnType<typeof getAppText>,
+  hasSelectedRecommendation: boolean,
+) {
+  const baseEyebrows: Record<NumberedSectionKey, string> = {
+    order: text.order.eyebrow,
+    recommendations: text.recommendations.eyebrow,
+    selectedPlan: text.selectedPlan.eyebrow,
+    comparison: text.comparison.eyebrow,
+    plan: text.plan.eyebrow,
+    split: text.split.eyebrow,
+    catalog: text.catalog.eyebrow,
+    nextData: text.nextData.eyebrow,
+  }
+  const visibleSectionKeys: NumberedSectionKey[] = ['order', 'recommendations']
+
+  if (hasSelectedRecommendation) {
+    visibleSectionKeys.push('selectedPlan')
+  }
+
+  visibleSectionKeys.push('comparison')
+
+  if (hasSelectedRecommendation) {
+    visibleSectionKeys.push('plan')
+  }
+
+  visibleSectionKeys.push('split', 'catalog', 'nextData')
+
+  const numberedEyebrows = { ...baseEyebrows }
+
+  visibleSectionKeys.forEach((key, index) => {
+    numberedEyebrows[key] = formatNumberedSectionEyebrow(
+      index + 1,
+      baseEyebrows[key],
+    )
+  })
+
+  return numberedEyebrows
+}
+
+type CollapsibleSectionProps = {
+  className?: string
+  eyebrow: string
+  title: ReactNode
+  details?: ReactNode
+  actions?: ReactNode
+  isCollapsed: boolean
+  toggleLabel: string
+  onToggle: () => void
+  children: ReactNode
+}
+
+function CollapsibleSection({
+  className,
+  eyebrow,
+  title,
+  details,
+  actions,
+  isCollapsed,
+  toggleLabel,
+  onToggle,
+  children,
+}: CollapsibleSectionProps) {
+  const sectionClassName = [
+    'section-card',
+    'collapsible-section',
+    className,
+    isCollapsed ? 'is-collapsed' : 'is-expanded',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  return (
+    <section
+      className={sectionClassName}
+      onClick={onToggle}
+      aria-expanded={!isCollapsed}
+    >
+      <SectionHeading
+        eyebrow={eyebrow}
+        title={title}
+        details={details}
+        actions={
+          <div
+            className="collapsible-actions"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {actions}
+            <button
+              type="button"
+              className="collapse-toggle"
+              aria-label={toggleLabel}
+              aria-expanded={!isCollapsed}
+              onClick={onToggle}
+            >
+              <span className="collapse-icon" aria-hidden="true" />
+            </button>
+          </div>
+        }
+      />
+      <div className="collapsible-content">
+        <div
+          className="collapsible-content-inner"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {children}
+        </div>
+      </div>
+    </section>
+  )
+}
 
 function cloneProducts(products: Product[]) {
   return products.map((product) => ({
@@ -98,6 +243,14 @@ function formatCartonSummary(
 function App() {
   const [locale, setLocale] = useState<SupportedLocale>('ja')
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false)
+  const [isOrderCollapsed, setIsOrderCollapsed] = useState(false)
+  const [isRecommendationsCollapsed, setIsRecommendationsCollapsed] = useState(false)
+  const [isSelectedSummaryCollapsed, setIsSelectedSummaryCollapsed] = useState(false)
+  const [isComparisonCollapsed, setIsComparisonCollapsed] = useState(false)
+  const [isPlanCollapsed, setIsPlanCollapsed] = useState(false)
+  const [isSplitCollapsed, setIsSplitCollapsed] = useState(false)
+  const [isCatalogCollapsed, setIsCatalogCollapsed] = useState(false)
+  const [isNextDataCollapsed, setIsNextDataCollapsed] = useState(false)
   const [editableProducts, setEditableProducts] = useState(() =>
     cloneProducts(packingProducts),
   )
@@ -109,6 +262,7 @@ function App() {
   const [selectedSplitKey, setSelectedSplitKey] = useState<string | null>(null)
   const languageMenuRef = useRef<HTMLDivElement | null>(null)
   const text = getAppText(locale)
+  const collapseLabels = collapseActionLabels[locale]
   const localizedCatalog = useMemo(
     () => {
       const baseCatalog = getLocalizedCatalog(locale)
@@ -227,6 +381,10 @@ function App() {
   )
   const bestSingleRecommendation = recommendations[0] ?? null
   const bestSplitRecommendation = splitRecommendations[0] ?? null
+  const sectionEyebrows = getNumberedSectionEyebrows(
+    text,
+    Boolean(selectedRecommendation),
+  )
 
   const totalUnits = useMemo(
     () => orderLines.reduce((sum, line) => sum + line.quantity, 0),
@@ -597,22 +755,26 @@ function App() {
 
       <section className="workspace">
         <section className="left-column">
-          <section className="section-card">
-            <SectionHeading
-              eyebrow={text.order.eyebrow}
-              title={text.order.title}
-              actions={
-                <div className="inline-actions">
-                  <button type="button" onClick={resetSample}>
-                    {text.order.sampleButton}
-                  </button>
-                  <button type="button" onClick={clearOrder}>
-                    {text.order.clearButton}
-                  </button>
-                </div>
-              }
-            />
-
+          <CollapsibleSection
+            className="order-row"
+            eyebrow={sectionEyebrows.order}
+            title={text.order.title}
+            isCollapsed={isOrderCollapsed}
+            toggleLabel={
+              isOrderCollapsed ? collapseLabels.expand : collapseLabels.collapse
+            }
+            onToggle={() => setIsOrderCollapsed((current) => !current)}
+            actions={
+              <div className="inline-actions">
+                <button type="button" onClick={resetSample}>
+                  {text.order.sampleButton}
+                </button>
+                <button type="button" onClick={clearOrder}>
+                  {text.order.clearButton}
+                </button>
+              </div>
+            }
+          >
             <div className="product-grid">
               {products.map((product) => {
                 const quantity = quantities.get(product.id) ?? 0
@@ -640,138 +802,150 @@ function App() {
                 )
               })}
             </div>
-          </section>
-
+          </CollapsibleSection>
         </section>
 
-        <section className="right-column">
-          <section className="section-card">
-            <SectionHeading
-              eyebrow={text.recommendations.eyebrow}
-              title={text.recommendations.title}
+        <CollapsibleSection
+          className="recommendations-row"
+          eyebrow={sectionEyebrows.recommendations}
+          title={text.recommendations.title}
+          isCollapsed={isRecommendationsCollapsed}
+          toggleLabel={
+            isRecommendationsCollapsed
+              ? collapseLabels.expand
+              : collapseLabels.collapse
+          }
+          onToggle={() => setIsRecommendationsCollapsed((current) => !current)}
+        >
+          <div className="strategy-switch" aria-label={text.strategy.ariaLabel}>
+            <button
+              type="button"
+              className={
+                packingStrategy === 'compact'
+                  ? 'strategy-chip is-active'
+                  : 'strategy-chip'
+              }
+              onClick={() => changePackingStrategy('compact')}
+            >
+              {text.strategy.compact}
+            </button>
+            <button
+              type="button"
+              className={
+                packingStrategy === 'stable'
+                  ? 'strategy-chip is-active'
+                  : 'strategy-chip'
+              }
+              onClick={() => changePackingStrategy('stable')}
+            >
+              {text.strategy.stable}
+            </button>
+          </div>
+          <p className="strategy-note">
+            {packingStrategy === 'compact'
+              ? text.strategy.compactNote
+              : text.strategy.stableNote}
+          </p>
+
+          {totalUnits === 0 ? (
+            <EmptyState
+              title={text.recommendations.emptyNoItemsTitle}
+              body={text.recommendations.emptyNoItemsBody}
             />
-
-            <div className="strategy-switch" aria-label={text.strategy.ariaLabel}>
-              <button
-                type="button"
-                className={
-                  packingStrategy === 'compact'
-                    ? 'strategy-chip is-active'
-                    : 'strategy-chip'
-                }
-                onClick={() => changePackingStrategy('compact')}
-              >
-                {text.strategy.compact}
-              </button>
-              <button
-                type="button"
-                className={
-                  packingStrategy === 'stable'
-                    ? 'strategy-chip is-active'
-                    : 'strategy-chip'
-                }
-                onClick={() => changePackingStrategy('stable')}
-              >
-                {text.strategy.stable}
-              </button>
-            </div>
-            <p className="strategy-note">
-              {packingStrategy === 'compact'
-                ? text.strategy.compactNote
-                : text.strategy.stableNote}
-            </p>
-
-            {totalUnits === 0 ? (
-              <EmptyState
-                title={text.recommendations.emptyNoItemsTitle}
-                body={text.recommendations.emptyNoItemsBody}
-              />
-            ) : recommendations.length === 0 ? (
-              <EmptyState
-                title={text.recommendations.emptyNoFitTitle}
-                body={text.recommendations.emptyNoFitBody}
-              />
-            ) : (
-              <div className="recommendation-grid">
-                {recommendations.map((recommendation, index) => (
-                  <SelectableMetricCard
-                    key={recommendation.key}
-                    badge={text.recommendations.candidateLabel(index + 1)}
-                    title={recommendation.carton.code}
-                    subtitle={`${recommendation.carton.label} / ${recommendation.carton.service}`}
-                    metrics={[
-                      {
-                        label: text.recommendations.metrics.cushion,
-                        value: recommendation.cushion.name,
-                      },
-                      {
-                        label: text.recommendations.metrics.score,
-                        value: recommendation.score,
-                      },
-                      {
-                        label: text.recommendations.metrics.fillRate,
-                        value: formatPercent(recommendation.effectiveFillRate, locale),
-                      },
-                      {
-                        label: text.recommendations.metrics.stability,
-                        value: `${recommendation.stabilityScore} / 100`,
-                      },
-                    ]}
-                    isActive={selectedRecommendation?.key === recommendation.key}
-                    onClick={() => setSelectedRecommendationKey(recommendation.key)}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-
-          {selectedRecommendation ? (
-            <>
-              <section className="section-card">
-                <SectionHeading
-                  eyebrow={text.selectedPlan.eyebrow}
-                  title={
-                    <>
-                      {selectedRecommendation.carton.code} /{' '}
-                      {selectedRecommendation.cushion.name}
-                    </>
-                  }
-                  details={
-                    <>
-                      <p className="service-line">
-                        {text.selectedPlan.serviceLabel}:{' '}
-                        {selectedRecommendation.carton.service}
-                      </p>
-                      <p className="service-line">
-                        {text.selectedPlan.strategyLabel}:{' '}
-                        {formatPackingStrategy(selectedRecommendation.strategy, locale)}
-                      </p>
-                    </>
-                  }
+          ) : recommendations.length === 0 ? (
+            <EmptyState
+              title={text.recommendations.emptyNoFitTitle}
+              body={text.recommendations.emptyNoFitBody}
+            />
+          ) : (
+            <div className="recommendation-grid">
+              {recommendations.map((recommendation, index) => (
+                <SelectableMetricCard
+                  key={recommendation.key}
+                  badge={text.recommendations.candidateLabel(index + 1)}
+                  title={recommendation.carton.code}
+                  subtitle={`${recommendation.carton.label} / ${recommendation.carton.service}`}
+                  metrics={[
+                    {
+                      label: text.recommendations.metrics.cushion,
+                      value: recommendation.cushion.name,
+                    },
+                    {
+                      label: text.recommendations.metrics.score,
+                      value: recommendation.score,
+                    },
+                    {
+                      label: text.recommendations.metrics.fillRate,
+                      value: formatPercent(recommendation.effectiveFillRate, locale),
+                    },
+                    {
+                      label: text.recommendations.metrics.stability,
+                      value: `${recommendation.stabilityScore} / 100`,
+                    },
+                  ]}
+                  isActive={selectedRecommendation?.key === recommendation.key}
+                  onClick={() => setSelectedRecommendationKey(recommendation.key)}
                 />
+              ))}
+            </div>
+          )}
+        </CollapsibleSection>
 
-                <DetailMetricGrid items={selectedPlanMetricItems} />
+        <section className="right-column">
+          {selectedRecommendation ? (
+            <CollapsibleSection
+              eyebrow={sectionEyebrows.selectedPlan}
+              title={
+                <>
+                  {selectedRecommendation.carton.code} /{' '}
+                  {selectedRecommendation.cushion.name}
+                </>
+              }
+              details={
+                <>
+                  <p className="service-line">
+                    {text.selectedPlan.serviceLabel}:{' '}
+                    {selectedRecommendation.carton.service}
+                  </p>
+                  <p className="service-line">
+                    {text.selectedPlan.strategyLabel}:{' '}
+                    {formatPackingStrategy(selectedRecommendation.strategy, locale)}
+                  </p>
+                </>
+              }
+              isCollapsed={isSelectedSummaryCollapsed}
+              toggleLabel={
+                isSelectedSummaryCollapsed
+                  ? collapseLabels.expand
+                  : collapseLabels.collapse
+              }
+              onToggle={() =>
+                setIsSelectedSummaryCollapsed((current) => !current)
+              }
+            >
+              <DetailMetricGrid items={selectedPlanMetricItems} />
 
-                <ul className="bullet-list">
-                  {selectedRecommendation.reasons.map((reason) => (
-                    <li key={reason}>{reason}</li>
-                  ))}
-                </ul>
-              </section>
-
-            </>
+              <ul className="bullet-list">
+                {selectedRecommendation.reasons.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+            </CollapsibleSection>
           ) : null}
-
         </section>
       </section>
 
       <section className="analysis-panels">
-        <section className="section-card compare-section-card">
-          <SectionHeading
-            eyebrow={text.comparison.eyebrow}
-            title={text.comparison.title}
-          />
-
+        <CollapsibleSection
+          className="compare-section-card"
+          eyebrow={sectionEyebrows.comparison}
+          title={text.comparison.title}
+          isCollapsed={isComparisonCollapsed}
+          toggleLabel={
+            isComparisonCollapsed ? collapseLabels.expand : collapseLabels.collapse
+          }
+          onToggle={() => setIsComparisonCollapsed((current) => !current)}
+        >
           {bestSingleRecommendation && bestSplitRecommendation ? (
             <>
               <div className="comparison-grid">
@@ -812,23 +986,36 @@ function App() {
               body={text.comparison.emptyBody}
             />
           )}
-        </section>
-
+        </CollapsibleSection>
         {selectedRecommendation ? (
-          <SelectedPlanSection
-            recommendation={selectedRecommendation}
-            locale={locale}
-            labels={text.plan}
-            disabledWrapLabel={text.order.itemWrapDisabled}
-          />
+          <CollapsibleSection
+            className="plan-section-card"
+            eyebrow={sectionEyebrows.plan}
+            title={text.plan.title}
+            isCollapsed={isPlanCollapsed}
+            toggleLabel={
+              isPlanCollapsed ? collapseLabels.expand : collapseLabels.collapse
+            }
+            onToggle={() => setIsPlanCollapsed((current) => !current)}
+          >
+            <SelectedPlanSection
+              recommendation={selectedRecommendation}
+              locale={locale}
+              labels={text.plan}
+              disabledWrapLabel={text.order.itemWrapDisabled}
+            />
+          </CollapsibleSection>
         ) : null}
 
-        <section className="section-card">
-          <SectionHeading
-            eyebrow={text.split.eyebrow}
-            title={text.split.title}
-          />
-
+        <CollapsibleSection
+          eyebrow={sectionEyebrows.split}
+          title={text.split.title}
+          isCollapsed={isSplitCollapsed}
+          toggleLabel={
+            isSplitCollapsed ? collapseLabels.expand : collapseLabels.collapse
+          }
+          onToggle={() => setIsSplitCollapsed((current) => !current)}
+        >
           {splitRecommendations.length === 0 ? (
             <EmptyState title={text.split.emptyTitle} body={text.split.emptyBody} />
           ) : (
@@ -894,14 +1081,17 @@ function App() {
               ) : null}
             </>
           )}
-        </section>
+        </CollapsibleSection>
 
-        <section className="section-card">
-          <SectionHeading
-            eyebrow={text.catalog.eyebrow}
-            title={text.catalog.title}
-          />
-
+        <CollapsibleSection
+          eyebrow={sectionEyebrows.catalog}
+          title={text.catalog.title}
+          isCollapsed={isCatalogCollapsed}
+          toggleLabel={
+            isCatalogCollapsed ? collapseLabels.expand : collapseLabels.collapse
+          }
+          onToggle={() => setIsCatalogCollapsed((current) => !current)}
+        >
           <div className="catalog-grid">
             <div className="catalog-panel">
               <h3>{text.catalog.cartonTitle}</h3>
@@ -958,21 +1148,25 @@ function App() {
               </ul>
             </div>
           </div>
-        </section>
+        </CollapsibleSection>
       </section>
 
       <section className="post-workspace">
-        <section className="section-card">
-          <SectionHeading
-            eyebrow={text.nextData.eyebrow}
-            title={text.nextData.title}
-          />
+        <CollapsibleSection
+          eyebrow={sectionEyebrows.nextData}
+          title={text.nextData.title}
+          isCollapsed={isNextDataCollapsed}
+          toggleLabel={
+            isNextDataCollapsed ? collapseLabels.expand : collapseLabels.collapse
+          }
+          onToggle={() => setIsNextDataCollapsed((current) => !current)}
+        >
           <ul className="bullet-list">
             {text.nextData.items.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
-        </section>
+        </CollapsibleSection>
       </section>
     </main>
   )

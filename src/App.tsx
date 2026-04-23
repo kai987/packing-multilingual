@@ -1,31 +1,24 @@
+import { useMemo, useState } from 'react'
 import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
-import './App.css'
-import {
-  DetailMetricGrid,
-  EmptyState,
-  MetricsList,
-  SectionHeading,
-  type MetricItem,
-} from '@/components/common'
-import { ProductCard } from '@/components/ProductCard'
-import { SelectedPlanSection } from '@/components/SelectedPlanSection'
-import { SelectableMetricCard } from '@/components/SelectableMetricCard'
-import { SplitBoxCard } from '@/components/SplitBoxCard'
-import {
-  FloatingRepoLink,
-  LanguageSwitcher,
-} from '@/components/TopControls'
+  Linking,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native'
 import {
   cartons as packingCartons,
   cushions as packingCushions,
   defaultOrderLines,
   products as packingProducts,
 } from '@/data'
+import PackingScene3D from '@/PackingScene3D'
 import {
   getAppText,
   getLocalizedCatalog,
@@ -35,11 +28,11 @@ import {
 } from '@/localization'
 import {
   formatCurrencyYen,
-  getDocumentLang,
+  localeNames,
   type SupportedLocale,
 } from '@/locale'
 import {
-  type Product,
+  buildVoidFillBlocks,
   formatDimensions,
   formatDisplayItemWrapKind,
   formatLength,
@@ -48,19 +41,27 @@ import {
   formatVolumeLiters,
   formatWeight,
   getDisplayItemWrapKind,
+  getDisplayItemWrapPadding,
   recommendPacking,
   recommendSplitPacking,
+  type PackedLayer,
   type PackingStrategy,
+  type Product,
+  type Recommendation,
+  type SplitPackingBox,
 } from '@/packing'
+
 const repositoryUrl = 'https://github.com/kai987/packing-multilingual'
-const repositoryAriaLabels: Record<SupportedLocale, string> = {
-  ja: 'GitHub リポジトリを開く',
-  zh: '打开 GitHub 仓库',
-  en: 'Open the GitHub repository',
-}
 const PRODUCT_QUANTITY_MAX_DIGITS = 3
 const PRODUCT_DIMENSION_MAX_DIGITS = 3
 const PRODUCT_PRICE_MAX_DIGITS = 6
+
+type MetricItem = {
+  label: string
+  value: string | number
+}
+
+type PlanText = ReturnType<typeof getAppText>['plan']
 
 function cloneProducts(products: Product[]) {
   return products.map((product) => ({
@@ -95,81 +96,707 @@ function formatCartonSummary(
     .join(' + ')
 }
 
-function App() {
+function percent(value: number): `${number}%` {
+  return `${Math.max(0, Math.min(100, value))}%` as `${number}%`
+}
+
+function Section({
+  eyebrow,
+  title,
+  children,
+  actions,
+}: {
+  eyebrow: string
+  title: string
+  children: React.ReactNode
+  actions?: React.ReactNode
+}) {
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionTitleGroup}>
+          <Text style={styles.eyebrow}>{eyebrow}</Text>
+          <Text style={styles.sectionTitle}>{title}</Text>
+        </View>
+        {actions ? <View style={styles.sectionActions}>{actions}</View> : null}
+      </View>
+      {children}
+    </View>
+  )
+}
+
+function MetricRows({
+  items,
+  columns = false,
+}: {
+  items: MetricItem[]
+  columns?: boolean
+}) {
+  return (
+    <View style={columns ? styles.metricGrid : styles.metricList}>
+      {items.map((item, index) => (
+        <View
+          key={`${item.label}-${index}`}
+          style={columns ? styles.metricTile : styles.metricRow}
+        >
+          <Text style={styles.metricLabel}>{item.label}</Text>
+          <Text style={styles.metricValue}>{String(item.value)}</Text>
+        </View>
+      ))}
+    </View>
+  )
+}
+
+function EmptyState({
+  title,
+  body,
+}: {
+  title: string
+  body: string
+}) {
+  return (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyTitle}>{title}</Text>
+      <Text style={styles.emptyBody}>{body}</Text>
+    </View>
+  )
+}
+
+function AppButton({
+  label,
+  onPress,
+  variant = 'secondary',
+}: {
+  label: string
+  onPress: () => void
+  variant?: 'primary' | 'secondary' | 'ghost'
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.appButton,
+        variant === 'primary' && styles.appButtonPrimary,
+        variant === 'ghost' && styles.appButtonGhost,
+        pressed && styles.pressed,
+      ]}
+    >
+      <Text
+        style={[
+          styles.appButtonText,
+          variant === 'primary' && styles.appButtonPrimaryText,
+          variant === 'ghost' && styles.appButtonGhostText,
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  )
+}
+
+function LanguageSwitch({
+  locale,
+  onChange,
+}: {
+  locale: SupportedLocale
+  onChange: (locale: SupportedLocale) => void
+}) {
+  const localeOptions = Object.keys(localeNames) as SupportedLocale[]
+
+  return (
+    <View style={styles.languageSwitch}>
+      {localeOptions.map((localeOption) => {
+        const isActive = localeOption === locale
+
+        return (
+          <Pressable
+            key={localeOption}
+            accessibilityRole="button"
+            onPress={() => onChange(localeOption)}
+            style={({ pressed }) => [
+              styles.languageOption,
+              isActive && styles.languageOptionActive,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text
+              style={[
+                styles.languageOptionText,
+                isActive && styles.languageOptionActiveText,
+              ]}
+            >
+              {localeNames[localeOption]}
+            </Text>
+          </Pressable>
+        )
+      })}
+    </View>
+  )
+}
+
+function NumberField({
+  label,
+  value,
+  maxLength,
+  placeholder,
+  onChangeText,
+}: {
+  label?: string
+  value: string
+  maxLength: number
+  placeholder?: string
+  onChangeText: (value: string) => void
+}) {
+  return (
+    <View style={styles.numberField}>
+      {label ? <Text style={styles.numberFieldLabel}>{label}</Text> : null}
+      <TextInput
+        keyboardType="number-pad"
+        maxLength={maxLength}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#7b817a"
+        style={styles.numberInput}
+        value={value}
+      />
+    </View>
+  )
+}
+
+function ProductEditor({
+  product,
+  quantity,
+  useItemWrap,
+  locale,
+  labels,
+  onDecrease,
+  onIncrease,
+  onQuantityChange,
+  onPriceChange,
+  onDimensionChange,
+  onToggleItemWrap,
+}: {
+  product: Product
+  quantity: number
+  useItemWrap: boolean
+  locale: SupportedLocale
+  labels: {
+    dimensions: string
+    dimensionsUnit: string
+    dimensionLength: string
+    dimensionWidth: string
+    dimensionHeight: string
+    price: string
+    priceUnit: string
+    weight: string
+    note: string
+    unsetPrice: string
+    itemWrapLabel: string
+    itemWrapEnabled: string
+    itemWrapDisabled: string
+    itemWrapEnableAction: string
+    itemWrapDisableAction: string
+  }
+  onDecrease: () => void
+  onIncrease: () => void
+  onQuantityChange: (value: string) => void
+  onPriceChange: (value: string) => void
+  onDimensionChange: (dimension: keyof Product['size'], value: string) => void
+  onToggleItemWrap: () => void
+}) {
+  return (
+    <View style={styles.productCard}>
+      <View style={styles.productHeader}>
+        <View style={[styles.brandChip, { backgroundColor: product.color }]}>
+          <Text style={styles.brandChipText}>{product.brand}</Text>
+        </View>
+        <Text style={styles.productName}>{product.name}</Text>
+      </View>
+      <Text style={styles.productCategory}>{product.category}</Text>
+
+      <Text style={styles.fieldGroupLabel}>
+        {labels.dimensions} ({labels.dimensionsUnit})
+      </Text>
+      <View style={styles.dimensionGrid}>
+        <NumberField
+          label={labels.dimensionLength}
+          maxLength={PRODUCT_DIMENSION_MAX_DIGITS}
+          value={String(product.size.length)}
+          onChangeText={(value) => onDimensionChange('length', value)}
+        />
+        <NumberField
+          label={labels.dimensionWidth}
+          maxLength={PRODUCT_DIMENSION_MAX_DIGITS}
+          value={String(product.size.width)}
+          onChangeText={(value) => onDimensionChange('width', value)}
+        />
+        <NumberField
+          label={labels.dimensionHeight}
+          maxLength={PRODUCT_DIMENSION_MAX_DIGITS}
+          value={String(product.size.height)}
+          onChangeText={(value) => onDimensionChange('height', value)}
+        />
+      </View>
+
+      <Text style={styles.fieldGroupLabel}>
+        {labels.price} ({labels.priceUnit})
+      </Text>
+      <NumberField
+        maxLength={PRODUCT_PRICE_MAX_DIGITS}
+        placeholder={labels.unsetPrice}
+        value={product.priceYen !== undefined ? String(product.priceYen) : ''}
+        onChangeText={onPriceChange}
+      />
+
+      <View style={styles.productMetaGrid}>
+        <View style={styles.productMetaBlock}>
+          <Text style={styles.metricLabel}>{labels.weight}</Text>
+          <Text style={styles.metricValue}>{formatWeight(product.weight, locale)}</Text>
+        </View>
+        <View style={styles.productMetaBlock}>
+          <Text style={styles.metricLabel}>{labels.note}</Text>
+          <Text style={styles.metaText}>{product.note}</Text>
+        </View>
+      </View>
+
+      <View style={styles.stepper}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={onDecrease}
+          style={({ pressed }) => [styles.stepperButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.stepperButtonText}>-</Text>
+        </Pressable>
+        <TextInput
+          keyboardType="number-pad"
+          maxLength={PRODUCT_QUANTITY_MAX_DIGITS}
+          onChangeText={onQuantityChange}
+          style={styles.quantityInput}
+          value={String(quantity)}
+        />
+        <Pressable
+          accessibilityRole="button"
+          onPress={onIncrease}
+          style={({ pressed }) => [styles.stepperButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.stepperButtonText}>+</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.wrapControl}>
+        <View>
+          <Text style={styles.metricLabel}>{labels.itemWrapLabel}</Text>
+          <Text style={useItemWrap ? styles.wrapEnabled : styles.wrapDisabled}>
+            {useItemWrap ? labels.itemWrapEnabled : labels.itemWrapDisabled}
+          </Text>
+        </View>
+        <AppButton
+          label={useItemWrap ? labels.itemWrapDisableAction : labels.itemWrapEnableAction}
+          onPress={onToggleItemWrap}
+          variant={useItemWrap ? 'primary' : 'secondary'}
+        />
+      </View>
+    </View>
+  )
+}
+
+function SelectableCard({
+  badge,
+  title,
+  subtitle,
+  metrics,
+  isActive,
+  onPress,
+}: {
+  badge: string
+  title: string
+  subtitle: string
+  metrics: MetricItem[]
+  isActive: boolean
+  onPress: () => void
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.selectableCard,
+        isActive && styles.selectableCardActive,
+        pressed && styles.pressed,
+      ]}
+    >
+      <View style={styles.selectableHead}>
+        <Text style={styles.cardBadge}>{badge}</Text>
+        <Text style={styles.selectableTitle}>{title}</Text>
+      </View>
+      <Text style={styles.selectableSubtitle}>{subtitle}</Text>
+      <MetricRows items={metrics} />
+    </Pressable>
+  )
+}
+
+function groupPlacementsByLayer(placements: Recommendation['placements']) {
+  const grouped = new Map<number, Recommendation['placements']>()
+
+  for (const placement of placements) {
+    const existing = grouped.get(placement.layerIndex)
+
+    if (existing) {
+      existing.push(placement)
+    } else {
+      grouped.set(placement.layerIndex, [placement])
+    }
+  }
+
+  for (const layerPlacements of grouped.values()) {
+    layerPlacements.sort((left, right) => {
+      if (left.y !== right.y) {
+        return left.y - right.y
+      }
+
+      return left.x - right.x
+    })
+  }
+
+  return grouped
+}
+
+function LayerBoard({
+  recommendation,
+  layer,
+  placements,
+  locale,
+  labels,
+}: {
+  recommendation: Recommendation
+  layer: PackedLayer
+  placements: Recommendation['placements']
+  locale: SupportedLocale
+  labels: PlanText
+}) {
+  const itemWrapPadding = getDisplayItemWrapPadding(recommendation.cushion)
+  const itemWrapKind = getDisplayItemWrapKind(recommendation.cushion)
+  const voidBlocks = buildVoidFillBlocks(recommendation).filter(
+    (block) => (block.layerIndex ?? -1) === layer.index,
+  )
+
+  return (
+    <View style={styles.layerCard}>
+      <View style={styles.layerHeader}>
+        <Text style={styles.layerTitle}>{labels.layerTitle(layer.index + 1)}</Text>
+        <Text style={styles.layerRange}>
+          {labels.layerRange(
+            formatLength(recommendation.bottomFillHeight + layer.z, locale),
+            formatLength(
+              recommendation.bottomFillHeight + layer.z + layer.height,
+              locale,
+            ),
+            formatLength(layer.height, locale),
+          )}
+        </Text>
+      </View>
+
+      <View
+        style={[
+          styles.planBoard,
+          {
+            aspectRatio:
+              recommendation.carton.inner.length / recommendation.carton.inner.width,
+          },
+        ]}
+      >
+        <View
+          pointerEvents="none"
+          style={[
+            styles.effectiveArea,
+            {
+              left: percent(
+                (recommendation.cushion.sidePadding /
+                  recommendation.carton.inner.length) *
+                  100,
+              ),
+              top: percent(
+                (recommendation.cushion.sidePadding /
+                  recommendation.carton.inner.width) *
+                  100,
+              ),
+              width: percent(
+                (recommendation.effectiveInner.length /
+                  recommendation.carton.inner.length) *
+                  100,
+              ),
+              height: percent(
+                (recommendation.effectiveInner.width /
+                  recommendation.carton.inner.width) *
+                  100,
+              ),
+            },
+          ]}
+        />
+        {voidBlocks.map((block) => (
+          <View
+            key={block.id}
+            pointerEvents="none"
+            style={[
+              styles.voidBlock,
+              {
+                left: percent(
+                  ((recommendation.cushion.sidePadding + block.x) /
+                    recommendation.carton.inner.length) *
+                    100,
+                ),
+                top: percent(
+                  ((recommendation.cushion.sidePadding + block.y) /
+                    recommendation.carton.inner.width) *
+                    100,
+                ),
+                width: percent((block.length / recommendation.carton.inner.length) * 100),
+                height: percent((block.width / recommendation.carton.inner.width) * 100),
+              },
+            ]}
+          />
+        ))}
+        {placements.map((placement) => {
+          const widthRate = placement.length / recommendation.carton.inner.length
+          const heightRate = placement.width / recommendation.carton.inner.width
+          const hasItemWrap = placement.useItemWrap
+          const insetXPercent = hasItemWrap
+            ? Math.min((itemWrapPadding.side / placement.length) * 100, 18)
+            : 0
+          const insetYPercent = hasItemWrap
+            ? Math.min((itemWrapPadding.side / placement.width) * 100, 18)
+            : 0
+          const placementDimensions = formatDimensions(
+            {
+              length: placement.length,
+              width: placement.width,
+              height: placement.height,
+            },
+            locale,
+          )
+          const canShowDetails = widthRate * heightRate >= 0.08
+
+          return (
+            <View
+              key={placement.instanceId}
+              style={[
+                styles.planItemShell,
+                hasItemWrap && styles.planItemShellWrapped,
+                {
+                  backgroundColor: hasItemWrap ? '#f7d8a5' : placement.color,
+                  left: percent(
+                    ((recommendation.cushion.sidePadding + placement.x) /
+                      recommendation.carton.inner.length) *
+                      100,
+                  ),
+                  top: percent(
+                    ((recommendation.cushion.sidePadding + placement.y) /
+                      recommendation.carton.inner.width) *
+                      100,
+                  ),
+                  width: percent(widthRate * 100),
+                  height: percent(heightRate * 100),
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.planItem,
+                  {
+                    backgroundColor: placement.color,
+                    left: percent(insetXPercent),
+                    right: percent(insetXPercent),
+                    top: percent(insetYPercent),
+                    bottom: percent(insetYPercent),
+                  },
+                ]}
+              >
+                <Text numberOfLines={1} style={styles.planItemBrand}>
+                  {placement.brand}
+                </Text>
+                {canShowDetails ? (
+                  <>
+                    <Text numberOfLines={1} style={styles.planItemCategory}>
+                      {placement.category}
+                    </Text>
+                    <Text numberOfLines={1} style={styles.planItemSize}>
+                      {placementDimensions}
+                    </Text>
+                  </>
+                ) : null}
+              </View>
+            </View>
+          )
+        })}
+      </View>
+
+      <View style={styles.planLegend}>
+        <Text style={styles.legendText}>{labels.boardLegend.sidePadding}</Text>
+        <Text style={styles.legendText}>
+          {labels.boardLegend.itemWrap(formatDisplayItemWrapKind(itemWrapKind, locale))}
+        </Text>
+        <Text style={styles.legendText}>
+          {labels.boardLegend.padding(
+            formatLength(recommendation.cushion.sidePadding, locale),
+            formatLength(recommendation.cushion.topPadding, locale),
+            formatLength(recommendation.bottomFillHeight, locale),
+          )}
+        </Text>
+      </View>
+    </View>
+  )
+}
+
+function PackingPlan({
+  recommendation,
+  locale,
+  labels,
+}: {
+  recommendation: Recommendation
+  locale: SupportedLocale
+  labels: PlanText
+}) {
+  const placementsByLayer = useMemo(
+    () => groupPlacementsByLayer(recommendation.placements),
+    [recommendation.placements],
+  )
+
+  return (
+    <View style={styles.layerStack}>
+      {recommendation.layers.map((layer) => (
+        <LayerBoard
+          key={layer.index}
+          recommendation={recommendation}
+          layer={layer}
+          placements={placementsByLayer.get(layer.index) ?? []}
+          locale={locale}
+          labels={labels}
+        />
+      ))}
+    </View>
+  )
+}
+
+function SplitBoxSummary({
+  box,
+  locale,
+  labels,
+}: {
+  box: SplitPackingBox
+  locale: SupportedLocale
+  labels: {
+    boxTitle: (boxIndex: number) => string
+    fillRate: string
+    weight: string
+    bottomFillHeight: string
+    topEmptyHeight: string
+    topVoidFillHeight: string
+    unusedTopHeight: string
+    unusedVolume: string
+    itemQuantity: (quantity: number) => string
+  }
+}) {
+  const metrics: MetricItem[] = [
+    {
+      label: labels.fillRate,
+      value: formatPercent(box.recommendation.effectiveFillRate, locale),
+    },
+    {
+      label: labels.weight,
+      value: formatWeight(box.recommendation.totalWeight, locale),
+    },
+    {
+      label: labels.bottomFillHeight,
+      value: formatLength(box.recommendation.bottomFillHeight, locale),
+    },
+    {
+      label: labels.topEmptyHeight,
+      value: formatLength(box.recommendation.topEmptyHeight, locale),
+    },
+    {
+      label: labels.topVoidFillHeight,
+      value: formatLength(box.recommendation.topVoidFillHeight, locale),
+    },
+    {
+      label: labels.unusedTopHeight,
+      value: formatLength(box.recommendation.unusedTopHeight, locale),
+    },
+    {
+      label: labels.unusedVolume,
+      value: formatVolumeLiters(box.recommendation.unusedVolume, locale),
+    },
+  ]
+
+  return (
+    <View style={styles.splitBoxCard}>
+      <View style={styles.splitBoxHeader}>
+        <Text style={styles.splitBoxTitle}>{labels.boxTitle(box.boxIndex)}</Text>
+        <Text style={styles.serviceText}>{box.recommendation.carton.service}</Text>
+      </View>
+      <Text style={styles.splitBoxName}>
+        {box.recommendation.carton.code} / {box.recommendation.carton.label}
+      </Text>
+      <Text style={styles.metaText}>{box.recommendation.cushion.name}</Text>
+      <MetricRows items={metrics} />
+      <View style={styles.splitItemList}>
+        {box.items.map((item) => (
+          <View key={`${box.boxIndex}-${item.productId}`} style={styles.splitItem}>
+            <View style={[styles.miniColorDot, { backgroundColor: item.color }]} />
+            <Text numberOfLines={1} style={styles.splitItemName}>
+              {item.brand} / {item.name}
+            </Text>
+            <Text style={styles.splitItemQty}>{labels.itemQuantity(item.quantity)}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  )
+}
+
+export default function App() {
   const [locale, setLocale] = useState<SupportedLocale>('ja')
-  const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false)
   const [editableProducts, setEditableProducts] = useState(() =>
     cloneProducts(packingProducts),
   )
   const [orderLines, setOrderLines] = useState(defaultOrderLines)
-  const [packingStrategy, setPackingStrategy] = useState<PackingStrategy>('compact')
+  const [packingStrategy, setPackingStrategy] =
+    useState<PackingStrategy>('compact')
   const [selectedRecommendationKey, setSelectedRecommendationKey] = useState<
     string | null
   >(null)
   const [selectedSplitKey, setSelectedSplitKey] = useState<string | null>(null)
-  const languageMenuRef = useRef<HTMLDivElement | null>(null)
+  const [viewSyncToken, setViewSyncToken] = useState(0)
+  const [isSceneGestureActive, setIsSceneGestureActive] = useState(false)
+  const { width } = useWindowDimensions()
+  const isWide = width >= 900
   const text = getAppText(locale)
-  const localizedCatalog = useMemo(
-    () => {
-      const baseCatalog = getLocalizedCatalog(locale)
-      const editableProductsById = new Map(
-        editableProducts.map((product) => [product.id, product] as const),
-      )
+  const localizedCatalog = useMemo(() => {
+    const baseCatalog = getLocalizedCatalog(locale)
+    const editableProductsById = new Map(
+      editableProducts.map((product) => [product.id, product] as const),
+    )
 
-      return {
-        ...baseCatalog,
-        products: baseCatalog.products.map((product) => {
-          const editableProduct = editableProductsById.get(product.id)
+    return {
+      ...baseCatalog,
+      products: baseCatalog.products.map((product) => {
+        const editableProduct = editableProductsById.get(product.id)
 
-          return editableProduct
-            ? {
-                ...product,
-                size: { ...editableProduct.size },
-                priceYen: editableProduct.priceYen,
-              }
-            : product
-        }),
-      }
-    },
-    [editableProducts, locale],
-  )
+        return editableProduct
+          ? {
+              ...product,
+              size: { ...editableProduct.size },
+              priceYen: editableProduct.priceYen,
+            }
+          : product
+      }),
+    }
+  }, [editableProducts, locale])
   const { products, cartons, cushions } = localizedCatalog
   const localizedCatalogMaps = useMemo(
     () => getLocalizedCatalogMaps(localizedCatalog),
     [localizedCatalog],
   )
-
-  useEffect(() => {
-    document.documentElement.lang = getDocumentLang(locale)
-    document.title = text.documentTitle
-  }, [locale, text.documentTitle])
-
-  useEffect(() => {
-    if (!isLanguageMenuOpen) {
-      return
-    }
-
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!languageMenuRef.current?.contains(event.target as Node)) {
-        setIsLanguageMenuOpen(false)
-      }
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsLanguageMenuOpen(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handlePointerDown)
-    document.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [isLanguageMenuOpen])
-
   const quantities = useMemo(
     () => new Map(orderLines.map((line) => [line.productId, line.quantity] as const)),
     [orderLines],
@@ -179,7 +806,6 @@ function App() {
       new Map(orderLines.map((line) => [line.productId, line.useItemWrap] as const)),
     [orderLines],
   )
-
   const baseRecommendations = useMemo(
     () =>
       recommendPacking({
@@ -216,7 +842,6 @@ function App() {
       ),
     [baseSplitRecommendations, locale, localizedCatalogMaps],
   )
-
   const selectedRecommendation = useMemo(
     () => getSelectedItem(recommendations, selectedRecommendationKey),
     [recommendations, selectedRecommendationKey],
@@ -227,7 +852,6 @@ function App() {
   )
   const bestSingleRecommendation = recommendations[0] ?? null
   const bestSplitRecommendation = splitRecommendations[0] ?? null
-
   const totalUnits = useMemo(
     () => orderLines.reduce((sum, line) => sum + line.quantity, 0),
     [orderLines],
@@ -246,14 +870,35 @@ function App() {
   const selectedHasItemWrap = selectedRecommendation
     ? selectedRecommendation.placements.some((placement) => placement.useItemWrap)
     : false
+  const getRecommendationItemWrapLabel = (recommendation: Recommendation) =>
+    recommendation.placements.some((placement) => placement.useItemWrap)
+      ? formatDisplayItemWrapKind(
+          getDisplayItemWrapKind(recommendation.cushion),
+          locale,
+        )
+      : text.order.itemWrapDisabled
   const selectedItemWrapLabel = selectedRecommendation
     ? selectedHasItemWrap
-      ? formatDisplayItemWrapKind(
-        getDisplayItemWrapKind(selectedRecommendation.cushion),
-        locale,
-      )
+      ? getRecommendationItemWrapLabel(selectedRecommendation)
       : text.order.itemWrapDisabled
     : ''
+  const visualizedPlanBoxes = selectedRecommendation
+    ? [
+        {
+          key: selectedRecommendation.key,
+          title: text.plan.threeDTitle,
+          subtitle: `${selectedRecommendation.carton.code} / ${selectedRecommendation.cushion.name}`,
+          recommendation: selectedRecommendation,
+        },
+      ]
+    : selectedSplitRecommendation
+      ? selectedSplitRecommendation.boxes.map((box) => ({
+          key: `${selectedSplitRecommendation.key}-${box.boxIndex}`,
+          title: text.split.boxThreeDTitle(box.boxIndex),
+          subtitle: `${box.recommendation.carton.code} / ${box.recommendation.cushion.name}`,
+          recommendation: box.recommendation,
+        }))
+      : []
   const productCardLabels = {
     dimensions: text.order.dimensions,
     dimensionsUnit: text.order.dimensionsUnit,
@@ -377,9 +1022,6 @@ function App() {
     topVoidFillHeight: text.split.topVoidFillHeight,
     unusedTopHeight: text.split.unusedTopHeight,
     unusedVolume: text.split.unusedVolume,
-    boxThreeDTitle: text.split.boxThreeDTitle,
-    threeDHint: text.plan.threeDHint,
-    loading: text.plan.loading,
     itemQuantity: text.split.itemQuantity,
   }
 
@@ -396,10 +1038,7 @@ function App() {
     )
   }
   const updateQuantityValue = (productId: string, rawValue: string) => {
-    const nextDigits = sanitizeDigitsInput(
-      rawValue,
-      PRODUCT_QUANTITY_MAX_DIGITS,
-    )
+    const nextDigits = sanitizeDigitsInput(rawValue, PRODUCT_QUANTITY_MAX_DIGITS)
 
     setOrderLines((current) =>
       current.map((line) =>
@@ -464,11 +1103,9 @@ function App() {
       }),
     )
   }
-
   const resetSample = () => {
     setOrderLines(defaultOrderLines)
   }
-
   const clearOrder = () => {
     setOrderLines((current) =>
       current.map((line) => ({
@@ -491,491 +1128,1116 @@ function App() {
     setSelectedRecommendationKey(null)
     setSelectedSplitKey(null)
   }
-
-  const updateLocaleImmediately = (localeOption: SupportedLocale) => {
-    if (localeOption === locale) {
-      setIsLanguageMenuOpen(false)
-      return
-    }
-
-    setLocale(localeOption)
-    setIsLanguageMenuOpen(false)
-  }
-
-  const toggleLanguageMenuOnPointerDown = (
-    event: React.PointerEvent<HTMLButtonElement>,
-  ) => {
-    if (event.pointerType === 'mouse' && event.button !== 0) {
-      return
-    }
-
-    event.preventDefault()
-    setIsLanguageMenuOpen((current) => !current)
-  }
-
-  const selectLanguageOnPointerDown = (localeOption: SupportedLocale) => (
-    event: React.PointerEvent<HTMLButtonElement>,
-  ) => {
-    if (event.pointerType === 'mouse' && event.button !== 0) {
-      return
-    }
-
-    event.preventDefault()
-    updateLocaleImmediately(localeOption)
-  }
-
-  const handleLanguageMenuKeyDown = (
-    event: React.KeyboardEvent<HTMLButtonElement>,
-  ) => {
-    if (event.key !== 'Enter' && event.key !== ' ') {
-      return
-    }
-
-    event.preventDefault()
-    setIsLanguageMenuOpen((current) => !current)
-  }
-
-  const handleLanguageOptionKeyDown = (localeOption: SupportedLocale) => (
-    event: React.KeyboardEvent<HTMLButtonElement>,
-  ) => {
-    if (event.key !== 'Enter' && event.key !== ' ') {
-      return
-    }
-
-    event.preventDefault()
-    updateLocaleImmediately(localeOption)
+  const openRepository = () => {
+    void Linking.openURL(repositoryUrl)
   }
 
   return (
-    <main className="page-shell">
-      <FloatingRepoLink
-        href={repositoryUrl}
-        ariaLabel={repositoryAriaLabels[locale]}
-      />
-      <LanguageSwitcher
-        locale={locale}
-        isOpen={isLanguageMenuOpen}
-        menuRef={languageMenuRef}
-        label={text.languageMenuLabel}
-        ariaLabel={text.languageMenuAria}
-        onTogglePointerDown={toggleLanguageMenuOnPointerDown}
-        onToggleKeyDown={handleLanguageMenuKeyDown}
-        onOptionPointerDown={selectLanguageOnPointerDown}
-        onOptionKeyDown={handleLanguageOptionKeyDown}
-      />
-
-      <section className="hero">
-        <div className="hero-copy section-card">
-          <h1 className="hero-tagline">{text.hero.tagline}</h1>
-          <p className="eyebrow">{text.hero.eyebrow}</p>
-          <p className="lead">{text.hero.lead}</p>
-          <div className="hero-stats">
-            <article>
-              <span>{text.hero.stats.totalUnits}</span>
-              <strong>{totalUnits}</strong>
-            </article>
-            <article>
-              <span>{text.hero.stats.activeSkus}</span>
-              <strong>{activeSkuCount}</strong>
-            </article>
-            <article>
-              <span>{text.hero.stats.totalWeight}</span>
-              <strong>{formatWeight(totalWeight, locale)}</strong>
-            </article>
-          </div>
-        </div>
-
-        <aside className="section-card summary-card">
-          <p className="eyebrow">{text.summary.title}</p>
-          <ul className="bullet-list summary-list">
-            {text.summary.items.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </aside>
-      </section>
-
-      <section className="workspace">
-        <section className="left-column">
-          <section className="section-card">
-            <SectionHeading
-              eyebrow={text.order.eyebrow}
-              title={text.order.title}
-              actions={
-                <div className="inline-actions">
-                  <button type="button" onClick={resetSample}>
-                    {text.order.sampleButton}
-                  </button>
-                  <button type="button" onClick={clearOrder}>
-                    {text.order.clearButton}
-                  </button>
-                </div>
-              }
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f4f5f0" />
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        scrollEnabled={!isSceneGestureActive}
+      >
+        <View style={styles.page}>
+          <View style={styles.topBar}>
+            <LanguageSwitch locale={locale} onChange={setLocale} />
+            <AppButton
+              label="GitHub"
+              onPress={openRepository}
+              variant="ghost"
             />
+          </View>
 
-            <div className="product-grid">
-              {products.map((product) => {
-                const quantity = quantities.get(product.id) ?? 0
-                const useItemWrap = itemWrapUsage.get(product.id) ?? false
+          <View style={[styles.hero, isWide && styles.heroWide]}>
+            <View style={styles.heroPanel}>
+              <Text style={styles.heroTitle}>{text.hero.tagline}</Text>
+              <Text style={styles.eyebrow}>{text.hero.eyebrow}</Text>
+              <Text style={styles.lead}>{text.hero.lead}</Text>
+              <View style={styles.heroStats}>
+                <View style={styles.heroStat}>
+                  <Text style={styles.metricLabel}>{text.hero.stats.totalUnits}</Text>
+                  <Text style={styles.heroStatValue}>{totalUnits}</Text>
+                </View>
+                <View style={styles.heroStat}>
+                  <Text style={styles.metricLabel}>{text.hero.stats.activeSkus}</Text>
+                  <Text style={styles.heroStatValue}>{activeSkuCount}</Text>
+                </View>
+                <View style={styles.heroStat}>
+                  <Text style={styles.metricLabel}>{text.hero.stats.totalWeight}</Text>
+                  <Text style={styles.heroStatValue}>
+                    {formatWeight(totalWeight, locale)}
+                  </Text>
+                </View>
+              </View>
+            </View>
 
-                return (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    quantity={quantity}
-                    useItemWrap={useItemWrap}
-                    locale={locale}
-                    labels={productCardLabels}
-                    onDecrease={() => updateQuantity(product.id, -1)}
-                    onIncrease={() => updateQuantity(product.id, 1)}
-                    onQuantityChange={(value) =>
-                      updateQuantityValue(product.id, value)
-                    }
-                    onPriceChange={(value) => updateProductPrice(product.id, value)}
-                    onDimensionChange={(dimension, value) =>
-                      updateProductDimension(product.id, dimension, value)
-                    }
-                    onToggleItemWrap={() => toggleItemWrap(product.id)}
+            <View style={styles.summaryPanel}>
+              <Text style={styles.eyebrow}>{text.summary.title}</Text>
+              {text.summary.items.map((item) => (
+                <Text key={item} style={styles.bulletText}>
+                  - {item}
+                </Text>
+              ))}
+            </View>
+          </View>
+
+          <View style={[styles.workspace, isWide && styles.workspaceWide]}>
+            <View style={styles.workspaceColumn}>
+              <Section
+                eyebrow={text.order.eyebrow}
+                title={text.order.title}
+                actions={
+                  <>
+                    <AppButton label={text.order.sampleButton} onPress={resetSample} />
+                    <AppButton label={text.order.clearButton} onPress={clearOrder} />
+                  </>
+                }
+              >
+                <View style={styles.productGrid}>
+                  {products.map((product) => {
+                    const quantity = quantities.get(product.id) ?? 0
+                    const useItemWrap = itemWrapUsage.get(product.id) ?? false
+
+                    return (
+                      <ProductEditor
+                        key={product.id}
+                        product={product}
+                        quantity={quantity}
+                        useItemWrap={useItemWrap}
+                        locale={locale}
+                        labels={productCardLabels}
+                        onDecrease={() => updateQuantity(product.id, -1)}
+                        onIncrease={() => updateQuantity(product.id, 1)}
+                        onQuantityChange={(value) =>
+                          updateQuantityValue(product.id, value)
+                        }
+                        onPriceChange={(value) =>
+                          updateProductPrice(product.id, value)
+                        }
+                        onDimensionChange={(dimension, value) =>
+                          updateProductDimension(product.id, dimension, value)
+                        }
+                        onToggleItemWrap={() => toggleItemWrap(product.id)}
+                      />
+                    )
+                  })}
+                </View>
+              </Section>
+            </View>
+
+            <View style={styles.workspaceColumn}>
+              <Section
+                eyebrow={text.recommendations.eyebrow}
+                title={text.recommendations.title}
+              >
+                <View style={styles.strategySwitch}>
+                  <AppButton
+                    label={text.strategy.compact}
+                    onPress={() => changePackingStrategy('compact')}
+                    variant={packingStrategy === 'compact' ? 'primary' : 'secondary'}
                   />
-                )
-              })}
-            </div>
-          </section>
+                  <AppButton
+                    label={text.strategy.stable}
+                    onPress={() => changePackingStrategy('stable')}
+                    variant={packingStrategy === 'stable' ? 'primary' : 'secondary'}
+                  />
+                </View>
+                <Text style={styles.strategyNote}>
+                  {packingStrategy === 'compact'
+                    ? text.strategy.compactNote
+                    : text.strategy.stableNote}
+                </Text>
 
-        </section>
+                {totalUnits === 0 ? (
+                  <EmptyState
+                    title={text.recommendations.emptyNoItemsTitle}
+                    body={text.recommendations.emptyNoItemsBody}
+                  />
+                ) : recommendations.length === 0 ? (
+                  <EmptyState
+                    title={text.recommendations.emptyNoFitTitle}
+                    body={text.recommendations.emptyNoFitBody}
+                  />
+                ) : (
+                  <View style={styles.cardStack}>
+                    {recommendations.map((recommendation, index) => (
+                      <SelectableCard
+                        key={recommendation.key}
+                        badge={text.recommendations.candidateLabel(index + 1)}
+                        title={recommendation.carton.code}
+                        subtitle={`${recommendation.carton.label} / ${recommendation.carton.service}`}
+                        metrics={[
+                          {
+                            label: text.recommendations.metrics.cushion,
+                            value: recommendation.cushion.name,
+                          },
+                          {
+                            label: text.recommendations.metrics.score,
+                            value: recommendation.score,
+                          },
+                          {
+                            label: text.recommendations.metrics.fillRate,
+                            value: formatPercent(
+                              recommendation.effectiveFillRate,
+                              locale,
+                            ),
+                          },
+                          {
+                            label: text.recommendations.metrics.stability,
+                            value: `${recommendation.stabilityScore} / 100`,
+                          },
+                        ]}
+                        isActive={selectedRecommendation?.key === recommendation.key}
+                        onPress={() =>
+                          setSelectedRecommendationKey(recommendation.key)
+                        }
+                      />
+                    ))}
+                  </View>
+                )}
+              </Section>
 
-        <section className="right-column">
-          <section className="section-card">
-            <SectionHeading
-              eyebrow={text.recommendations.eyebrow}
-              title={text.recommendations.title}
-            />
+              {selectedRecommendation ? (
+                <Section
+                  eyebrow={text.selectedPlan.eyebrow}
+                  title={`${selectedRecommendation.carton.code} / ${selectedRecommendation.cushion.name}`}
+                >
+                  <Text style={styles.serviceText}>
+                    {text.selectedPlan.serviceLabel}:{' '}
+                    {selectedRecommendation.carton.service}
+                  </Text>
+                  <Text style={styles.serviceText}>
+                    {text.selectedPlan.strategyLabel}:{' '}
+                    {formatPackingStrategy(selectedRecommendation.strategy, locale)}
+                  </Text>
+                  <MetricRows items={selectedPlanMetricItems} columns />
+                  <View style={styles.reasonList}>
+                    {selectedRecommendation.reasons.map((reason) => (
+                      <Text key={reason} style={styles.bulletText}>
+                        - {reason}
+                      </Text>
+                    ))}
+                  </View>
+                </Section>
+              ) : null}
+            </View>
+          </View>
 
-            <div className="strategy-switch" aria-label={text.strategy.ariaLabel}>
-              <button
-                type="button"
-                className={
-                  packingStrategy === 'compact'
-                    ? 'strategy-chip is-active'
-                    : 'strategy-chip'
-                }
-                onClick={() => changePackingStrategy('compact')}
-              >
-                {text.strategy.compact}
-              </button>
-              <button
-                type="button"
-                className={
-                  packingStrategy === 'stable'
-                    ? 'strategy-chip is-active'
-                    : 'strategy-chip'
-                }
-                onClick={() => changePackingStrategy('stable')}
-              >
-                {text.strategy.stable}
-              </button>
-            </div>
-            <p className="strategy-note">
-              {packingStrategy === 'compact'
-                ? text.strategy.compactNote
-                : text.strategy.stableNote}
-            </p>
-
-            {totalUnits === 0 ? (
+          <Section
+            eyebrow={text.plan.eyebrow}
+            title={text.plan.title}
+            actions={
+              visualizedPlanBoxes.length > 0 ? (
+                <AppButton
+                  label={text.plan.alignTopView}
+                  onPress={() => setViewSyncToken((current) => current + 1)}
+                />
+              ) : undefined
+            }
+          >
+            {visualizedPlanBoxes.length > 0 ? (
+              <>
+                {visualizedPlanBoxes.map((box) => (
+                  <View key={box.key} style={styles.visualizedBox}>
+                    <View style={styles.scenePanel}>
+                      <View style={styles.layerHeader}>
+                        <Text style={styles.layerTitle}>{box.title}</Text>
+                        <Text style={styles.layerRange}>{box.subtitle}</Text>
+                        <Text style={styles.layerRange}>{text.plan.threeDHint}</Text>
+                      </View>
+                      <PackingScene3D
+                        onGestureActiveChange={setIsSceneGestureActive}
+                        recommendation={box.recommendation}
+                        viewSyncToken={viewSyncToken}
+                      />
+                      <View style={styles.threeDLegend}>
+                        {[
+                          text.plan.legend.currentItemWrap(
+                            getRecommendationItemWrapLabel(box.recommendation),
+                          ),
+                          text.plan.legend.wrap,
+                          text.plan.legend.paperFill,
+                          text.plan.legend.recommendedVoidFill,
+                          text.plan.legend.product,
+                          text.plan.legend.unusedTop,
+                          text.plan.legend.carton,
+                        ].map((item) => (
+                          <Text key={item} style={styles.legendText}>
+                            {item}
+                          </Text>
+                        ))}
+                      </View>
+                    </View>
+                    <PackingPlan
+                      recommendation={box.recommendation}
+                      locale={locale}
+                      labels={text.plan}
+                    />
+                  </View>
+                ))}
+              </>
+            ) : (
               <EmptyState
                 title={text.recommendations.emptyNoItemsTitle}
                 body={text.recommendations.emptyNoItemsBody}
               />
-            ) : recommendations.length === 0 ? (
-              <EmptyState
-                title={text.recommendations.emptyNoFitTitle}
-                body={text.recommendations.emptyNoFitBody}
-              />
-            ) : (
-              <div className="recommendation-grid">
-                {recommendations.map((recommendation, index) => (
-                  <SelectableMetricCard
-                    key={recommendation.key}
-                    badge={text.recommendations.candidateLabel(index + 1)}
-                    title={recommendation.carton.code}
-                    subtitle={`${recommendation.carton.label} / ${recommendation.carton.service}`}
-                    metrics={[
-                      {
-                        label: text.recommendations.metrics.cushion,
-                        value: recommendation.cushion.name,
-                      },
-                      {
-                        label: text.recommendations.metrics.score,
-                        value: recommendation.score,
-                      },
-                      {
-                        label: text.recommendations.metrics.fillRate,
-                        value: formatPercent(recommendation.effectiveFillRate, locale),
-                      },
-                      {
-                        label: text.recommendations.metrics.stability,
-                        value: `${recommendation.stabilityScore} / 100`,
-                      },
-                    ]}
-                    isActive={selectedRecommendation?.key === recommendation.key}
-                    onClick={() => setSelectedRecommendationKey(recommendation.key)}
-                  />
-                ))}
-              </div>
             )}
-          </section>
+          </Section>
 
-          {selectedRecommendation ? (
-            <>
-              <section className="section-card">
-                <SectionHeading
-                  eyebrow={text.selectedPlan.eyebrow}
-                  title={
-                    <>
-                      {selectedRecommendation.carton.code} /{' '}
-                      {selectedRecommendation.cushion.name}
-                    </>
-                  }
-                  details={
-                    <>
-                      <p className="service-line">
-                        {text.selectedPlan.serviceLabel}:{' '}
-                        {selectedRecommendation.carton.service}
-                      </p>
-                      <p className="service-line">
-                        {text.selectedPlan.strategyLabel}:{' '}
-                        {formatPackingStrategy(selectedRecommendation.strategy, locale)}
-                      </p>
-                    </>
-                  }
-                />
+          <Section eyebrow={text.comparison.eyebrow} title={text.comparison.title}>
+            {bestSingleRecommendation && bestSplitRecommendation ? (
+              <>
+                <View style={[styles.comparisonGrid, isWide && styles.comparisonGridWide]}>
+                  <View style={styles.comparisonCard}>
+                    <Text style={styles.cardBadge}>{text.comparison.singleBest}</Text>
+                    <Text style={styles.comparisonTitle}>
+                      {bestSingleRecommendation.carton.code} /{' '}
+                      {bestSingleRecommendation.carton.label}
+                    </Text>
+                    <Text style={styles.metaText}>
+                      {bestSingleRecommendation.cushion.name}
+                    </Text>
+                    <MetricRows items={singleComparisonMetrics} />
+                  </View>
 
-                <DetailMetricGrid items={selectedPlanMetricItems} />
+                  <View style={[styles.comparisonCard, styles.comparisonCardHighlight]}>
+                    <Text style={styles.cardBadge}>
+                      {text.comparison.splitBest(bestSplitRecommendation.boxCount)}
+                    </Text>
+                    <Text style={styles.comparisonTitle}>
+                      {formatCartonSummary(bestSplitRecommendation.boxes)}
+                    </Text>
+                    <Text style={styles.metaText}>
+                      {text.comparison.splitShipment(
+                        bestSplitRecommendation.boxes.length,
+                      )}
+                    </Text>
+                    <MetricRows items={splitComparisonMetrics} />
+                  </View>
+                </View>
+                <Text style={styles.strategyNote}>
+                  {text.comparison.note(
+                    bestSplitRecommendation.boxCount,
+                    formatPercent(bestSplitRecommendation.effectiveFillRate, locale),
+                    formatPercent(
+                      bestSplitRecommendation.effectiveFillRate -
+                        bestSingleRecommendation.effectiveFillRate,
+                      locale,
+                    ),
+                  )}
+                </Text>
+              </>
+            ) : (
+              <EmptyState
+                title={text.comparison.emptyTitle}
+                body={text.comparison.emptyBody}
+              />
+            )}
+          </Section>
 
-                <ul className="bullet-list">
-                  {selectedRecommendation.reasons.map((reason) => (
-                    <li key={reason}>{reason}</li>
+          <Section eyebrow={text.split.eyebrow} title={text.split.title}>
+            {splitRecommendations.length === 0 ? (
+              <EmptyState title={text.split.emptyTitle} body={text.split.emptyBody} />
+            ) : (
+              <>
+                <View style={styles.cardStack}>
+                  {splitRecommendations.map((recommendation, index) => (
+                    <SelectableCard
+                      key={recommendation.key}
+                      badge={text.split.optionLabel(
+                        recommendation.boxCount,
+                        index + 1,
+                      )}
+                      title={formatPercent(recommendation.effectiveFillRate, locale)}
+                      subtitle={formatCartonSummary(recommendation.boxes)}
+                      metrics={[
+                        {
+                          label: text.split.metrics.totalEmptyVolume,
+                          value: formatVolumeLiters(
+                            recommendation.totalEmptyVolume,
+                            locale,
+                          ),
+                        },
+                        {
+                          label: text.split.metrics.extraVoidFill,
+                          value: formatVolumeLiters(
+                            recommendation.totalRecommendedVoidFillVolume,
+                            locale,
+                          ),
+                        },
+                        {
+                          label: text.split.metrics.unusedVolume,
+                          value: formatVolumeLiters(
+                            recommendation.totalUnusedVolume,
+                            locale,
+                          ),
+                        },
+                        {
+                          label: text.split.metrics.stability,
+                          value: `${recommendation.stabilityScore} / 100`,
+                        },
+                      ]}
+                      isActive={selectedSplitRecommendation?.key === recommendation.key}
+                      onPress={() => setSelectedSplitKey(recommendation.key)}
+                    />
                   ))}
-                </ul>
-              </section>
+                </View>
 
-            </>
-          ) : null}
+                {selectedSplitRecommendation ? (
+                  <>
+                    <View style={[styles.splitBoxGrid, isWide && styles.splitBoxGridWide]}>
+                      {selectedSplitRecommendation.boxes.map((box) => (
+                        <SplitBoxSummary
+                          key={box.boxIndex}
+                          box={box}
+                          locale={locale}
+                          labels={splitBoxLabels}
+                        />
+                      ))}
+                    </View>
+                    <View style={styles.reasonList}>
+                      {selectedSplitRecommendation.reasons.map((reason) => (
+                        <Text key={reason} style={styles.bulletText}>
+                          - {reason}
+                        </Text>
+                      ))}
+                    </View>
+                  </>
+                ) : null}
+              </>
+            )}
+          </Section>
 
-        </section>
-      </section>
-
-      <section className="analysis-panels">
-        <section className="section-card compare-section-card">
-          <SectionHeading
-            eyebrow={text.comparison.eyebrow}
-            title={text.comparison.title}
-          />
-
-          {bestSingleRecommendation && bestSplitRecommendation ? (
-            <>
-              <div className="comparison-grid">
-                <article className="comparison-card">
-                  <span className="comparison-tag">{text.comparison.singleBest}</span>
-                  <strong>
-                    {bestSingleRecommendation.carton.code} /{' '}
-                    {bestSingleRecommendation.carton.label}
-                  </strong>
-                  <p>{bestSingleRecommendation.cushion.name}</p>
-                  <MetricsList items={singleComparisonMetrics} />
-                </article>
-
-                <article className="comparison-card is-highlight">
-                  <span className="comparison-tag">
-                    {text.comparison.splitBest(bestSplitRecommendation.boxCount)}
-                  </span>
-                  <strong>{formatCartonSummary(bestSplitRecommendation.boxes)}</strong>
-                  <p>{text.comparison.splitShipment(bestSplitRecommendation.boxes.length)}</p>
-                  <MetricsList items={splitComparisonMetrics} />
-                </article>
-              </div>
-              <p className="strategy-note compare-note">
-                {text.comparison.note(
-                  bestSplitRecommendation.boxCount,
-                  formatPercent(bestSplitRecommendation.effectiveFillRate, locale),
-                  formatPercent(
-                    bestSplitRecommendation.effectiveFillRate -
-                      bestSingleRecommendation.effectiveFillRate,
-                    locale,
-                  ),
-                )}
-              </p>
-            </>
-          ) : (
-            <EmptyState
-              title={text.comparison.emptyTitle}
-              body={text.comparison.emptyBody}
-            />
-          )}
-        </section>
-
-        {selectedRecommendation ? (
-          <SelectedPlanSection
-            recommendation={selectedRecommendation}
-            locale={locale}
-            labels={text.plan}
-            disabledWrapLabel={text.order.itemWrapDisabled}
-          />
-        ) : null}
-
-        <section className="section-card">
-          <SectionHeading
-            eyebrow={text.split.eyebrow}
-            title={text.split.title}
-          />
-
-          {splitRecommendations.length === 0 ? (
-            <EmptyState title={text.split.emptyTitle} body={text.split.emptyBody} />
-          ) : (
-            <>
-              <div className="split-recommendation-grid">
-                {splitRecommendations.map((recommendation, index) => (
-                  <SelectableMetricCard
-                    key={recommendation.key}
-                    badge={text.split.optionLabel(recommendation.boxCount, index + 1)}
-                    title={formatPercent(recommendation.effectiveFillRate, locale)}
-                    subtitle={formatCartonSummary(recommendation.boxes)}
-                    metrics={[
-                      {
-                        label: text.split.metrics.totalEmptyVolume,
-                        value: formatVolumeLiters(
-                          recommendation.totalEmptyVolume,
-                          locale,
-                        ),
-                      },
-                      {
-                        label: text.split.metrics.extraVoidFill,
-                        value: formatVolumeLiters(
-                          recommendation.totalRecommendedVoidFillVolume,
-                          locale,
-                        ),
-                      },
-                      {
-                        label: text.split.metrics.unusedVolume,
-                        value: formatVolumeLiters(
-                          recommendation.totalUnusedVolume,
-                          locale,
-                        ),
-                      },
-                      {
-                        label: text.split.metrics.stability,
-                        value: `${recommendation.stabilityScore} / 100`,
-                      },
-                    ]}
-                    isActive={selectedSplitRecommendation?.key === recommendation.key}
-                    onClick={() => setSelectedSplitKey(recommendation.key)}
-                  />
-                ))}
-              </div>
-
-              {selectedSplitRecommendation ? (
-                <>
-                  <div className="split-box-grid">
-                    {selectedSplitRecommendation.boxes.map((box) => (
-                      <SplitBoxCard
-                        key={box.boxIndex}
-                        box={box}
-                        locale={locale}
-                        labels={splitBoxLabels}
-                      />
-                    ))}
-                  </div>
-                  <ul className="bullet-list">
-                    {selectedSplitRecommendation.reasons.map((reason) => (
-                      <li key={reason}>{reason}</li>
-                    ))}
-                  </ul>
-                </>
-              ) : null}
-            </>
-          )}
-        </section>
-
-        <section className="section-card">
-          <SectionHeading
-            eyebrow={text.catalog.eyebrow}
-            title={text.catalog.title}
-          />
-
-          <div className="catalog-grid">
-            <div className="catalog-panel">
-              <h3>{text.catalog.cartonTitle}</h3>
-              <ul className="catalog-list">
+          <Section eyebrow={text.catalog.eyebrow} title={text.catalog.title}>
+            <View style={[styles.catalogGrid, isWide && styles.catalogGridWide]}>
+              <View style={styles.catalogPanel}>
+                <Text style={styles.catalogTitle}>{text.catalog.cartonTitle}</Text>
                 {cartons.map((carton) => (
-                  <li key={carton.id}>
-                    <strong>
+                  <View key={carton.id} style={styles.catalogItem}>
+                    <Text style={styles.catalogItemTitle}>
                       {carton.code} / {carton.label}
-                    </strong>
-                    <span>{text.catalog.service}: {carton.service}</span>
+                    </Text>
+                    <Text style={styles.metaText}>
+                      {text.catalog.service}: {carton.service}
+                    </Text>
                     {carton.outer ? (
-                      <span>
-                        {text.catalog.outerDimensions}: {formatDimensions(carton.outer, locale)}
-                      </span>
+                      <Text style={styles.metaText}>
+                        {text.catalog.outerDimensions}:{' '}
+                        {formatDimensions(carton.outer, locale)}
+                      </Text>
                     ) : null}
-                    <span>
+                    <Text style={styles.metaText}>
                       {text.catalog.innerDimensions}:{' '}
                       {formatDimensions(carton.inner, locale)}
-                    </span>
-                    <span>
+                    </Text>
+                    <Text style={styles.metaText}>
                       {text.catalog.maxWeight}:{' '}
                       {carton.maxWeight === null
                         ? text.catalog.noWeightLimit
                         : formatWeight(carton.maxWeight, locale)}
-                    </span>
+                    </Text>
                     {carton.priceYen ? (
-                      <span>
-                        {text.catalog.materialPrice}: {formatCurrencyYen(carton.priceYen, locale)}
-                      </span>
+                      <Text style={styles.metaText}>
+                        {text.catalog.materialPrice}:{' '}
+                        {formatCurrencyYen(carton.priceYen, locale)}
+                      </Text>
                     ) : null}
-                    <p>{carton.note}</p>
-                  </li>
+                    <Text style={styles.catalogNote}>{carton.note}</Text>
+                  </View>
                 ))}
-              </ul>
-            </div>
+              </View>
 
-            <div className="catalog-panel">
-              <h3>{text.catalog.cushionTitle}</h3>
-              <ul className="catalog-list">
+              <View style={styles.catalogPanel}>
+                <Text style={styles.catalogTitle}>{text.catalog.cushionTitle}</Text>
                 {cushions.map((cushion) => (
-                  <li key={cushion.id}>
-                    <strong>{cushion.name}</strong>
-                    <span>
+                  <View key={cushion.id} style={styles.catalogItem}>
+                    <Text style={styles.catalogItemTitle}>{cushion.name}</Text>
+                    <Text style={styles.metaText}>
                       {text.catalog.cushionRule(
                         formatLength(cushion.sidePadding, locale),
                         formatLength(cushion.topPadding, locale),
                         formatLength(cushion.bottomPadding, locale),
                       )}
-                    </span>
-                    <span>{text.catalog.stabilityBonus}: +{cushion.stabilityBonus}</span>
-                    <p>{cushion.note}</p>
-                  </li>
+                    </Text>
+                    <Text style={styles.metaText}>
+                      {text.catalog.stabilityBonus}: +{cushion.stabilityBonus}
+                    </Text>
+                    <Text style={styles.catalogNote}>{cushion.note}</Text>
+                  </View>
                 ))}
-              </ul>
-            </div>
-          </div>
-        </section>
-      </section>
+              </View>
+            </View>
+          </Section>
 
-      <section className="post-workspace">
-        <section className="section-card">
-          <SectionHeading
-            eyebrow={text.nextData.eyebrow}
-            title={text.nextData.title}
-          />
-          <ul className="bullet-list">
+          <Section eyebrow={text.nextData.eyebrow} title={text.nextData.title}>
             {text.nextData.items.map((item) => (
-              <li key={item}>{item}</li>
+              <Text key={item} style={styles.bulletText}>
+                - {item}
+              </Text>
             ))}
-          </ul>
-        </section>
-      </section>
-    </main>
+          </Section>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   )
 }
 
-export default App
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f4f5f0',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
+  },
+  scrollContent: {
+    paddingBottom: 28,
+  },
+  page: {
+    alignSelf: 'center',
+    gap: 16,
+    maxWidth: 1180,
+    padding: 14,
+    width: '100%',
+  },
+  topBar: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'space-between',
+  },
+  languageSwitch: {
+    backgroundColor: '#e7ebe5',
+    borderColor: '#cfd8cf',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    padding: 3,
+  },
+  languageOption: {
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  languageOptionActive: {
+    backgroundColor: '#0f766e',
+  },
+  languageOptionText: {
+    color: '#2f3b36',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  languageOptionActiveText: {
+    color: '#ffffff',
+  },
+  hero: {
+    gap: 12,
+  },
+  heroWide: {
+    alignItems: 'stretch',
+    flexDirection: 'row',
+  },
+  heroPanel: {
+    backgroundColor: '#ffffff',
+    borderColor: '#d6ded6',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 2,
+    gap: 12,
+    padding: 18,
+  },
+  summaryPanel: {
+    backgroundColor: '#e8f2ef',
+    borderColor: '#b9d3ca',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    gap: 8,
+    padding: 16,
+  },
+  heroTitle: {
+    color: '#15201b',
+    fontSize: 29,
+    fontWeight: '800',
+    lineHeight: 35,
+  },
+  eyebrow: {
+    color: '#0f766e',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0,
+    textTransform: 'uppercase',
+  },
+  lead: {
+    color: '#46514b',
+    fontSize: 15,
+    lineHeight: 23,
+  },
+  heroStats: {
+    gap: 10,
+  },
+  heroStat: {
+    backgroundColor: '#f7f8f4',
+    borderColor: '#dfe5de',
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 12,
+  },
+  heroStatValue: {
+    color: '#111c18',
+    fontSize: 22,
+    fontWeight: '800',
+    marginTop: 3,
+  },
+  workspace: {
+    gap: 16,
+  },
+  workspaceWide: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+  },
+  workspaceColumn: {
+    flex: 1,
+    gap: 16,
+    minWidth: 0,
+  },
+  section: {
+    backgroundColor: '#ffffff',
+    borderColor: '#d8dfd8',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 14,
+    padding: 14,
+  },
+  sectionHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    justifyContent: 'space-between',
+  },
+  sectionTitleGroup: {
+    flex: 1,
+    gap: 4,
+    minWidth: 220,
+  },
+  sectionTitle: {
+    color: '#16221d',
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 25,
+  },
+  sectionActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  appButton: {
+    alignItems: 'center',
+    backgroundColor: '#eef2ee',
+    borderColor: '#cdd8cf',
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 38,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+  },
+  appButtonPrimary: {
+    backgroundColor: '#0f766e',
+    borderColor: '#0f766e',
+  },
+  appButtonGhost: {
+    backgroundColor: '#ffffff',
+  },
+  appButtonText: {
+    color: '#26332e',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  appButtonPrimaryText: {
+    color: '#ffffff',
+  },
+  appButtonGhostText: {
+    color: '#0f766e',
+  },
+  pressed: {
+    opacity: 0.72,
+  },
+  productGrid: {
+    gap: 12,
+  },
+  productCard: {
+    backgroundColor: '#fbfcfa',
+    borderColor: '#dbe3db',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
+  productHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  brandChip: {
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  brandChipText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  productName: {
+    color: '#17221e',
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '800',
+    minWidth: 160,
+  },
+  productCategory: {
+    color: '#59645e',
+    fontSize: 13,
+  },
+  fieldGroupLabel: {
+    color: '#34413a',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  dimensionGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  numberField: {
+    flex: 1,
+    gap: 4,
+    minWidth: 0,
+  },
+  numberFieldLabel: {
+    color: '#5d6861',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  numberInput: {
+    backgroundColor: '#ffffff',
+    borderColor: '#cbd5cd',
+    borderRadius: 8,
+    borderWidth: 1,
+    color: '#15201b',
+    fontSize: 15,
+    minHeight: 42,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  productMetaGrid: {
+    gap: 8,
+  },
+  productMetaBlock: {
+    backgroundColor: '#f2f5f2',
+    borderRadius: 8,
+    gap: 3,
+    padding: 10,
+  },
+  metaText: {
+    color: '#4b5650',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  stepper: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  stepperButton: {
+    alignItems: 'center',
+    backgroundColor: '#1f2937',
+    borderRadius: 8,
+    height: 42,
+    justifyContent: 'center',
+    width: 44,
+  },
+  stepperButtonText: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  quantityInput: {
+    backgroundColor: '#ffffff',
+    borderColor: '#cbd5cd',
+    borderRadius: 8,
+    borderWidth: 1,
+    color: '#15201b',
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '800',
+    minHeight: 42,
+    paddingHorizontal: 12,
+    textAlign: 'center',
+  },
+  wrapControl: {
+    alignItems: 'center',
+    backgroundColor: '#edf5f3',
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+    padding: 10,
+  },
+  wrapEnabled: {
+    color: '#0f766e',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  wrapDisabled: {
+    color: '#7b817a',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  strategySwitch: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  strategyNote: {
+    color: '#56615b',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  cardStack: {
+    gap: 10,
+  },
+  selectableCard: {
+    backgroundColor: '#fbfcfa',
+    borderColor: '#d7dfd8',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
+  selectableCardActive: {
+    backgroundColor: '#eff8f6',
+    borderColor: '#0f766e',
+    borderWidth: 2,
+  },
+  selectableHead: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'space-between',
+  },
+  cardBadge: {
+    color: '#2563eb',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  selectableTitle: {
+    color: '#17221d',
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  selectableSubtitle: {
+    color: '#58635d',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  metricList: {
+    gap: 8,
+  },
+  metricGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  metricRow: {
+    alignItems: 'center',
+    backgroundColor: '#f1f4f1',
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'space-between',
+    padding: 10,
+  },
+  metricTile: {
+    backgroundColor: '#f1f4f1',
+    borderRadius: 8,
+    gap: 4,
+    minWidth: 132,
+    padding: 10,
+  },
+  metricLabel: {
+    color: '#667069',
+    flexShrink: 1,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  metricValue: {
+    color: '#17211d',
+    flexShrink: 1,
+    fontSize: 14,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  emptyState: {
+    backgroundColor: '#f6f7f4',
+    borderColor: '#d9e0d8',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 6,
+    padding: 16,
+  },
+  emptyTitle: {
+    color: '#17221d',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  emptyBody: {
+    color: '#59645e',
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  bulletText: {
+    color: '#445049',
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  serviceText: {
+    color: '#4b5650',
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  reasonList: {
+    gap: 5,
+  },
+  layerStack: {
+    gap: 12,
+  },
+  visualizedBox: {
+    gap: 12,
+  },
+  scenePanel: {
+    backgroundColor: '#fbfcfa',
+    borderColor: '#d7ded7',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
+  layerCard: {
+    backgroundColor: '#fbfcfa',
+    borderColor: '#d7ded7',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
+  layerHeader: {
+    gap: 4,
+  },
+  layerTitle: {
+    color: '#17221d',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  layerRange: {
+    color: '#59645e',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  planBoard: {
+    backgroundColor: '#f3eee6',
+    borderColor: '#b9a997',
+    borderRadius: 8,
+    borderWidth: 2,
+    overflow: 'hidden',
+    position: 'relative',
+    width: '100%',
+  },
+  effectiveArea: {
+    backgroundColor: '#ffffff',
+    borderColor: '#b2cfc4',
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    position: 'absolute',
+  },
+  voidBlock: {
+    backgroundColor: '#c3d9d1',
+    borderColor: '#82aa9d',
+    borderWidth: 1,
+    position: 'absolute',
+  },
+  planItemShell: {
+    borderColor: '#ffffff',
+    borderRadius: 6,
+    borderWidth: 1,
+    overflow: 'hidden',
+    position: 'absolute',
+  },
+  planItemShellWrapped: {
+    borderColor: '#c4892f',
+    borderWidth: 2,
+  },
+  planItem: {
+    alignItems: 'center',
+    borderRadius: 4,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    padding: 3,
+    position: 'absolute',
+  },
+  planItemBrand: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  planItemCategory: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  planItemSize: {
+    color: '#ffffff',
+    fontSize: 8,
+  },
+  planLegend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  threeDLegend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  legendText: {
+    backgroundColor: '#eff2ee',
+    borderRadius: 6,
+    color: '#46514b',
+    fontSize: 11,
+    fontWeight: '700',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  comparisonGrid: {
+    gap: 10,
+  },
+  comparisonGridWide: {
+    flexDirection: 'row',
+  },
+  comparisonCard: {
+    backgroundColor: '#fbfcfa',
+    borderColor: '#d7dfd8',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    gap: 10,
+    padding: 12,
+  },
+  comparisonCardHighlight: {
+    backgroundColor: '#eef8f6',
+    borderColor: '#0f766e',
+  },
+  comparisonTitle: {
+    color: '#17221d',
+    fontSize: 17,
+    fontWeight: '800',
+    lineHeight: 23,
+  },
+  splitBoxGrid: {
+    gap: 10,
+    marginTop: 12,
+  },
+  splitBoxGridWide: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  splitBoxCard: {
+    backgroundColor: '#fbfcfa',
+    borderColor: '#d7dfd8',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    gap: 10,
+    minWidth: 250,
+    padding: 12,
+  },
+  splitBoxHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'space-between',
+  },
+  splitBoxTitle: {
+    color: '#2563eb',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  splitBoxName: {
+    color: '#17221d',
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 22,
+  },
+  splitItemList: {
+    gap: 7,
+  },
+  splitItem: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  miniColorDot: {
+    borderRadius: 5,
+    height: 10,
+    width: 10,
+  },
+  splitItemName: {
+    color: '#34413a',
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  splitItemQty: {
+    color: '#59645e',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  catalogGrid: {
+    gap: 12,
+  },
+  catalogGridWide: {
+    flexDirection: 'row',
+  },
+  catalogPanel: {
+    flex: 1,
+    gap: 10,
+  },
+  catalogTitle: {
+    color: '#17221d',
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  catalogItem: {
+    backgroundColor: '#f6f8f5',
+    borderColor: '#dde4dc',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 4,
+    padding: 10,
+  },
+  catalogItemTitle: {
+    color: '#17221d',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  catalogNote: {
+    color: '#59645e',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 2,
+  },
+})

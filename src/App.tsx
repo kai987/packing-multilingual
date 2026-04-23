@@ -359,6 +359,7 @@ function NumberField({
 }
 
 function ProductEditor({
+  compact,
   product,
   quantity,
   useItemWrap,
@@ -371,6 +372,7 @@ function ProductEditor({
   onDimensionChange,
   onToggleItemWrap,
 }: {
+  compact: boolean
   product: Product
   quantity: number
   useItemWrap: boolean
@@ -401,7 +403,7 @@ function ProductEditor({
 }) {
   return (
     <View style={styles.productCard}>
-      <View style={styles.productHeader}>
+      <View style={[styles.productHeader, compact && styles.productHeaderCompact]}>
         <View style={[styles.brandChip, { backgroundColor: product.color }]}>
           <Text style={styles.brandChipText}>{product.brand}</Text>
         </View>
@@ -412,7 +414,7 @@ function ProductEditor({
       <Text style={styles.fieldGroupLabel}>
         {labels.dimensions} ({labels.dimensionsUnit})
       </Text>
-      <View style={styles.dimensionGrid}>
+      <View style={[styles.dimensionGrid, compact && styles.dimensionGridCompact]}>
         <NumberField
           label={labels.dimensionLength}
           maxLength={PRODUCT_DIMENSION_MAX_DIGITS}
@@ -478,7 +480,7 @@ function ProductEditor({
         </Pressable>
       </View>
 
-      <View style={styles.wrapControl}>
+      <View style={[styles.wrapControl, compact && styles.wrapControlCompact]}>
         <View>
           <Text style={styles.metricLabel}>{labels.itemWrapLabel}</Text>
           <Text style={useItemWrap ? styles.wrapEnabled : styles.wrapDisabled}>
@@ -874,6 +876,7 @@ export default function App() {
   const [isNextDataCollapsed, setIsNextDataCollapsed] = useState(false)
   const { width } = useWindowDimensions()
   const isWide = width >= 900
+  const isCompact = width < 640
   const text = getAppText(locale)
   const collapseLabels = collapseActionLabels[locale]
   const localizedCatalog = useMemo(() => {
@@ -1316,6 +1319,7 @@ export default function App() {
 
                     return (
                       <ProductEditor
+                        compact={isCompact}
                         key={product.id}
                         product={product}
                         quantity={quantity}
@@ -1763,12 +1767,13 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 28,
+    paddingHorizontal: 14,
+    paddingTop: 14,
   },
   page: {
     alignSelf: 'center',
     gap: 16,
     maxWidth: 1180,
-    padding: 14,
     width: '100%',
   },
   topBar: {
@@ -1828,9 +1833,9 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     color: '#15201b',
-    fontSize: 29,
+    fontSize: 27,
     fontWeight: '800',
-    lineHeight: 35,
+    lineHeight: 33,
   },
   eyebrow: {
     color: '#0f766e',
@@ -1890,11 +1895,12 @@ const styles = StyleSheet.create({
   sectionTitleGroup: {
     flex: 1,
     gap: 4,
-    minWidth: 220,
+    minWidth: 0,
   },
   sectionTitle: {
     color: '#16221d',
     fontSize: 20,
+    flexShrink: 1,
     fontWeight: '800',
     lineHeight: 25,
   },
@@ -1902,6 +1908,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+    maxWidth: '100%',
   },
   collapseToggle: {
     alignItems: 'center',
@@ -1968,6 +1975,10 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
+  productHeaderCompact: {
+    alignItems: 'flex-start',
+    flexDirection: 'column',
+  },
   brandChip: {
     borderRadius: 6,
     paddingHorizontal: 8,
@@ -1983,7 +1994,8 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 17,
     fontWeight: '800',
-    minWidth: 160,
+    minWidth: 0,
+    width: '100%',
   },
   productCategory: {
     color: '#59645e',
@@ -1997,6 +2009,9 @@ const styles = StyleSheet.create({
   dimensionGrid: {
     flexDirection: 'row',
     gap: 8,
+  },
+  dimensionGridCompact: {
+    flexDirection: 'column',
   },
   numberField: {
     flex: 1,
@@ -2035,6 +2050,7 @@ const styles = StyleSheet.create({
   },
   stepper: {
     alignItems: 'center',
+    alignSelf: 'stretch',
     flexDirection: 'row',
     gap: 8,
   },
@@ -2058,9 +2074,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     color: '#15201b',
     flex: 1,
+    flexBasis: 0,
     fontSize: 17,
     fontWeight: '800',
     minHeight: 42,
+    minWidth: 0,
     paddingHorizontal: 12,
     textAlign: 'center',
   },
@@ -2072,6 +2090,10 @@ const styles = StyleSheet.create({
     gap: 12,
     justifyContent: 'space-between',
     padding: 10,
+  },
+  wrapControlCompact: {
+    alignItems: 'flex-start',
+    flexDirection: 'column',
   },
   wrapEnabled: {
     color: '#0f766e',
@@ -2112,6 +2134,7 @@ const styles = StyleSheet.create({
   selectableHead: {
     alignItems: 'center',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     justifyContent: 'space-between',
   },
@@ -2125,7 +2148,8 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 18,
     fontWeight: '800',
-    textAlign: 'right',
+    minWidth: 0,
+    textAlign: 'left',
   },
   selectableSubtitle: {
     color: '#58635d',
@@ -2145,6 +2169,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f1f4f1',
     borderRadius: 8,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     justifyContent: 'space-between',
     padding: 10,

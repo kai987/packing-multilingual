@@ -43,21 +43,48 @@ npm run web
 - `npm run android`
 - `npm run ios`
 - `npm run web`
+- `npm test`
 - `npm run typecheck`
 - `npm run lint`
+- `npm run build`
+
+公開用ビルドは `/packing-multilingual` 配下への配信を前提にしています。別のURLへ配置する場合は `app.json` の `expo.experiments.baseUrl` を変更してください。
+
+GitHub Actions は型チェック、lint、回帰テスト、Web build がすべて成功した場合のみ公開します。
 
 ## コード構成
 
 ```text
 src/
-├── App.tsx          # React Native UI
-├── PackingScene3D.tsx
-├── data.ts          # 商品 / 箱 / 緩衝材のサンプルマスタ
-├── localization.ts  # 多言語テキストとローカライズ済みマスタ
-├── locale.ts        # ロケールと数値表示
-├── main.tsx         # Expo root component 登録
-└── packing.ts       # 装箱推薦と評価ロジック
+├── App.tsx                 # React Native UI
+├── components/             # 商品編集、共通UI、推薦カード、レイヤー俯瞰図
+├── hooks/usePackingPlans.ts # 入力のdebounce、計算状態、古い計算のキャンセル
+├── PackingScene3D.tsx      # iOS / Android 向け 3D 表示
+├── PackingScene3D.web.tsx  # Web 向け 3D 表示
+├── data.ts                 # 商品 / 箱 / 緩衝材のサンプルマスタ
+├── localization.ts         # 多言語テキストとローカライズ済みマスタ
+├── locale.ts               # ロケールと数値表示
+├── main.tsx                # Expo root component 登録
+├── packing.test.ts         # 装箱アルゴリズムの回帰テスト
+├── packing.worker.ts       # Web用の計算Worker
+├── packingTask.web.ts      # Workerの起動、キャンセル、エラー処理
+├── packingTaskFallback.ts  # ネイティブ等では描画後に計算を実行
+├── sceneModel.ts           # Web / iOS / Android共通の3D幾何モデル
+├── numericInput.ts         # 数値の桁数制限と寸法検証
+├── styles.ts               # 既存UIの共通スタイル
+└── packing.ts              # 装箱推薦と評価ロジック
 ```
+
+## 計算上の前提
+
+- 箱の `volumetricWeightGrams` は容積重量です。耐荷重判定には使用しません。
+- 耐荷重判定は `maxLoadWeightGrams` の実測・確認済み値のみ使用します。現在の箱マスタでは未確認のため `null` とし、画面にも「未確認」と表示します。安全な積載重量を保証するものではありません。
+- 個別包装は商品本体を縮小せず、緩衝材プロファイルの `itemWrapThickness` を各面の外寸に加算して装箱します。初期値はプチプチ5mm、紙緩衝材8mm、PEフォーム10mmです。紙の厚みを含めた初期値は原型の仮定なので、実運用では包材とSKUの実測値に置き換えてください。
+- 段間には10mmの緩衝材を置き、その体積は空き容積に含めません。各段の接触面は平面で、下段の面積が上段より大きい配置を選びます。
+- `recommendPackingPlans({ ..., maxLayers: 3 })` のように段数上限を指定できます。既定値は従来どおり2段です。
+- 寸法は1〜999、数量は0〜999の整数、価格は最大6桁です。寸法入力中の空欄・不正値は計算に反映せず、フォーカスを外すと最後の有効値へ戻します。数量の空欄は0、価格の空欄は未設定として扱います。全角数字も半角へ正規化します。
+- Webでは入力を150msまとめてからWorkerで計算し、古いWorkerは停止します。Workerから画面へ送る結果は各種上位3案に絞り、応答が30秒ない場合は停止して再試行を表示します。ネイティブとWorker非対応環境では描画後にJSスレッドで計算するため、真の別スレッド計算ではありません。
+- 価格と表示言語だけの変更では装箱計算をやり直しません。言語だけの変更では3D幾何も再生成しません。
 
 ## 今後の拡張候補
 

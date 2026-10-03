@@ -8,34 +8,16 @@ import {
   type MutableRefObject,
   type RefObject,
 } from 'react'
-import {
-  PanResponder,
-  Platform,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native'
+import { PanResponder, Platform, StyleSheet, Text, View } from 'react-native'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import type { Recommendation } from '@/packing'
 import {
-  LAYER_SEPARATOR_HEIGHT,
-  buildVoidFillBlocks,
-  getDisplayItemWrapKind,
-  getDisplayItemWrapPadding,
-  type Recommendation,
-} from '@/packing'
-
-type SceneDimensions = {
-  cartonX: number
-  cartonY: number
-  cartonZ: number
-  effectiveX: number
-  effectiveY: number
-  effectiveZ: number
-  sidePadding: number
-  topPadding: number
-  bottomPadding: number
-}
+  buildPackingScene,
+  getSceneDimensions,
+  hasSameSceneGeometry,
+  type SceneDimensions,
+} from '@/sceneModel'
 
 type CameraMode = 'orbit' | 'top'
 
@@ -62,52 +44,8 @@ const defaultViewState: ViewState = {
   zoom: 1,
 }
 
-function mmToSceneUnits(value: number): number {
-  return value / 10
-}
-
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
-}
-
-function getSceneDimensions(recommendation: Recommendation): SceneDimensions {
-  return {
-    cartonX: mmToSceneUnits(recommendation.carton.inner.length),
-    cartonY: mmToSceneUnits(recommendation.carton.inner.height),
-    cartonZ: mmToSceneUnits(recommendation.carton.inner.width),
-    effectiveX: mmToSceneUnits(recommendation.effectiveInner.length),
-    effectiveY: mmToSceneUnits(recommendation.effectiveInner.height),
-    effectiveZ: mmToSceneUnits(recommendation.effectiveInner.width),
-    sidePadding: mmToSceneUnits(recommendation.cushion.sidePadding),
-    topPadding: mmToSceneUnits(recommendation.cushion.topPadding),
-    bottomPadding: mmToSceneUnits(recommendation.bottomFillHeight),
-  }
-}
-
-function getBlockPosition({
-  cartonX,
-  cartonZ,
-  x,
-  y,
-  z,
-  length,
-  width,
-  height,
-}: {
-  cartonX: number
-  cartonZ: number
-  x: number
-  y: number
-  z: number
-  length: number
-  width: number
-  height: number
-}) {
-  return [
-    -cartonX / 2 + x + length / 2,
-    z + height / 2,
-    -cartonZ / 2 + y + width / 2,
-  ] as const
 }
 
 function BoxBlock({
@@ -256,20 +194,11 @@ const PackingMeshes = memo(function PackingMeshes({
   groupRef: RefObject<THREE.Group | null>
   recommendation: Recommendation
 }) {
-  const voidFillBlocks = useMemo(
-    () => buildVoidFillBlocks(recommendation),
+  const { boxes } = useMemo(
+    () => buildPackingScene(recommendation),
     [recommendation],
   )
-  const itemWrapKind = getDisplayItemWrapKind(recommendation.cushion)
-  const itemWrapPadding = getDisplayItemWrapPadding(recommendation.cushion)
   const maxSize = Math.max(dims.cartonX, dims.cartonY, dims.cartonZ)
-  const sideSpan = Math.max(dims.cartonZ - dims.sidePadding * 2, 0)
-  const sideHeight = Math.max(
-    dims.cartonY - dims.topPadding - dims.bottomPadding,
-    0,
-  )
-  const topGuideY = dims.cartonY - dims.topPadding
-  const frameThickness = 0.14
 
   return (
     <>
@@ -283,7 +212,6 @@ const PackingMeshes = memo(function PackingMeshes({
         position={[-maxSize * 1.2, maxSize * 0.8, -maxSize]}
         intensity={0.42}
       />
-
       <group
         ref={groupRef}
         rotation={[defaultViewState.pitch, defaultViewState.yaw, 0]}
@@ -292,323 +220,9 @@ const PackingMeshes = memo(function PackingMeshes({
           <planeGeometry args={[dims.cartonX * 2.25, dims.cartonZ * 2.25]} />
           <meshStandardMaterial color="#ebe6dc" roughness={1} />
         </mesh>
-
-        <BoxBlock
-          args={[dims.cartonX, dims.cartonY, dims.cartonZ]}
-          color="#ffffff"
-          edgeColor="#836652"
-          opacity={0.02}
-          position={[0, dims.cartonY / 2, 0]}
-          transparent
-        />
-
-        {[
-          [
-            -dims.cartonX / 2 + frameThickness / 2,
-            dims.cartonY / 2,
-            -dims.cartonZ / 2 + frameThickness / 2,
-          ],
-          [
-            dims.cartonX / 2 - frameThickness / 2,
-            dims.cartonY / 2,
-            -dims.cartonZ / 2 + frameThickness / 2,
-          ],
-          [
-            -dims.cartonX / 2 + frameThickness / 2,
-            dims.cartonY / 2,
-            dims.cartonZ / 2 - frameThickness / 2,
-          ],
-          [
-            dims.cartonX / 2 - frameThickness / 2,
-            dims.cartonY / 2,
-            dims.cartonZ / 2 - frameThickness / 2,
-          ],
-        ].map((position, index) => (
-          <BoxBlock
-            key={`carton-post-${index}`}
-            args={[frameThickness, dims.cartonY, frameThickness]}
-            color="#e4d5c4"
-            position={position as [number, number, number]}
-            roughness={0.95}
-          />
+        {boxes.map((box) => (
+          <BoxBlock key={box.id} {...box} />
         ))}
-
-        {[
-          [
-            0,
-            frameThickness / 2,
-            -dims.cartonZ / 2 + frameThickness / 2,
-            dims.cartonX,
-            frameThickness,
-            frameThickness,
-          ],
-          [
-            0,
-            frameThickness / 2,
-            dims.cartonZ / 2 - frameThickness / 2,
-            dims.cartonX,
-            frameThickness,
-            frameThickness,
-          ],
-          [
-            -dims.cartonX / 2 + frameThickness / 2,
-            frameThickness / 2,
-            0,
-            frameThickness,
-            frameThickness,
-            dims.cartonZ,
-          ],
-          [
-            dims.cartonX / 2 - frameThickness / 2,
-            frameThickness / 2,
-            0,
-            frameThickness,
-            frameThickness,
-            dims.cartonZ,
-          ],
-          [
-            0,
-            dims.cartonY - frameThickness / 2,
-            -dims.cartonZ / 2 + frameThickness / 2,
-            dims.cartonX,
-            frameThickness,
-            frameThickness,
-          ],
-          [
-            0,
-            dims.cartonY - frameThickness / 2,
-            dims.cartonZ / 2 - frameThickness / 2,
-            dims.cartonX,
-            frameThickness,
-            frameThickness,
-          ],
-          [
-            -dims.cartonX / 2 + frameThickness / 2,
-            dims.cartonY - frameThickness / 2,
-            0,
-            frameThickness,
-            frameThickness,
-            dims.cartonZ,
-          ],
-          [
-            dims.cartonX / 2 - frameThickness / 2,
-            dims.cartonY - frameThickness / 2,
-            0,
-            frameThickness,
-            frameThickness,
-            dims.cartonZ,
-          ],
-        ].map(([x, y, z, sx, sy, sz], index) => (
-          <BoxBlock
-            key={`carton-rail-${index}`}
-            args={[sx, sy, sz]}
-            color="#eadfd3"
-            position={[x, y, z]}
-            roughness={0.95}
-          />
-        ))}
-
-        <BoxBlock
-          args={[dims.effectiveX, 0.03, dims.effectiveZ]}
-          color="#8f7664"
-          opacity={0.24}
-          position={[0, topGuideY, 0]}
-          transparent
-        />
-
-        <BoxBlock
-          args={[dims.cartonX, dims.bottomPadding, dims.cartonZ]}
-          color="#d5b18c"
-          opacity={0.48}
-          position={[0, dims.bottomPadding / 2, 0]}
-          transparent
-        />
-
-        {sideHeight > 0 && dims.sidePadding > 0 ? (
-          <>
-            <BoxBlock
-              args={[dims.cartonX, sideHeight, dims.sidePadding]}
-              color="#d9b28a"
-              opacity={0.38}
-              position={[
-                0,
-                dims.bottomPadding + sideHeight / 2,
-                -dims.cartonZ / 2 + dims.sidePadding / 2,
-              ]}
-              transparent
-            />
-            <BoxBlock
-              args={[dims.cartonX, sideHeight, dims.sidePadding]}
-              color="#d9b28a"
-              opacity={0.38}
-              position={[
-                0,
-                dims.bottomPadding + sideHeight / 2,
-                dims.cartonZ / 2 - dims.sidePadding / 2,
-              ]}
-              transparent
-            />
-            {sideSpan > 0 ? (
-              <>
-                <BoxBlock
-                  args={[dims.sidePadding, sideHeight, sideSpan]}
-                  color="#c99d77"
-                  opacity={0.34}
-                  position={[
-                    -dims.cartonX / 2 + dims.sidePadding / 2,
-                    dims.bottomPadding + sideHeight / 2,
-                    0,
-                  ]}
-                  transparent
-                />
-                <BoxBlock
-                  args={[dims.sidePadding, sideHeight, sideSpan]}
-                  color="#c99d77"
-                  opacity={0.34}
-                  position={[
-                    dims.cartonX / 2 - dims.sidePadding / 2,
-                    dims.bottomPadding + sideHeight / 2,
-                    0,
-                  ]}
-                  transparent
-                />
-              </>
-            ) : null}
-          </>
-        ) : null}
-
-        {recommendation.placements.map((placement) => {
-          const length = mmToSceneUnits(placement.length)
-          const width = mmToSceneUnits(placement.width)
-          const height = mmToSceneUnits(placement.height)
-          const x = mmToSceneUnits(recommendation.cushion.sidePadding + placement.x)
-          const y = mmToSceneUnits(recommendation.cushion.sidePadding + placement.y)
-          const z = mmToSceneUnits(
-            recommendation.bottomFillHeight + placement.z,
-          )
-          const hasItemWrap = placement.useItemWrap
-          const sideWrap = hasItemWrap
-            ? mmToSceneUnits(
-                Math.min(
-                  itemWrapPadding.side,
-                  placement.length * 0.18,
-                  placement.width * 0.18,
-                ),
-              )
-            : 0
-          const verticalWrap = hasItemWrap
-            ? mmToSceneUnits(
-                Math.min(itemWrapPadding.vertical, placement.height * 0.18),
-              )
-            : 0
-          const coreHeight = hasItemWrap
-            ? Math.max(height - verticalWrap * 2, height * 0.58)
-            : height
-          const coreLength = hasItemWrap
-            ? Math.max(length - sideWrap * 2, length * 0.58)
-            : length
-          const coreWidth = hasItemWrap
-            ? Math.max(width - sideWrap * 2, width * 0.58)
-            : width
-          const position = getBlockPosition({
-            cartonX: dims.cartonX,
-            cartonZ: dims.cartonZ,
-            x,
-            y,
-            z,
-            length,
-            width,
-            height,
-          })
-
-          return (
-            <group key={placement.instanceId} position={position}>
-              <BoxBlock
-                args={[coreLength, coreHeight, coreWidth]}
-                color={placement.color}
-                edgeColor="#fff7ef"
-                roughness={0.72}
-              />
-              {hasItemWrap ? (
-                <BoxBlock
-                  args={[length, height, width]}
-                  color={
-                    itemWrapKind === 'paper-fill' ? '#ceb08b' : '#e5c39f'
-                  }
-                  edgeColor={
-                    itemWrapKind === 'paper-fill' ? '#9f7a52' : '#c69063'
-                  }
-                  opacity={itemWrapKind === 'paper-fill' ? 0.16 : 0.14}
-                  transparent
-                  roughness={0.92}
-                />
-              ) : null}
-            </group>
-          )
-        })}
-
-        {recommendation.layers.slice(0, -1).map((layer) => {
-          const separatorHeight = mmToSceneUnits(LAYER_SEPARATOR_HEIGHT)
-          const separatorLength = dims.effectiveX
-          const separatorWidth = dims.effectiveZ
-          const x = dims.sidePadding
-          const y = dims.sidePadding
-          const z = mmToSceneUnits(
-            recommendation.bottomFillHeight + layer.z + layer.height,
-          )
-
-          return (
-            <BoxBlock
-              key={`layer-separator-${layer.index}`}
-              args={[separatorLength, separatorHeight, separatorWidth]}
-              color="#e7d1ad"
-              edgeColor="#b89061"
-              opacity={0.24}
-              position={getBlockPosition({
-                cartonX: dims.cartonX,
-                cartonZ: dims.cartonZ,
-                x,
-                y,
-                z,
-                length: separatorLength,
-                width: separatorWidth,
-                height: separatorHeight,
-              })}
-              transparent
-              roughness={0.94}
-            />
-          )
-        })}
-
-        {voidFillBlocks.map((block) => {
-          const length = mmToSceneUnits(block.length)
-          const width = mmToSceneUnits(block.width)
-          const height = mmToSceneUnits(block.height)
-          const x = mmToSceneUnits(recommendation.cushion.sidePadding + block.x)
-          const y = mmToSceneUnits(recommendation.cushion.sidePadding + block.y)
-          const z = mmToSceneUnits(recommendation.bottomFillHeight + block.z)
-
-          return (
-            <BoxBlock
-              key={block.id}
-              args={[length, height, width]}
-              color="#dfbc98"
-              opacity={0.14}
-              position={getBlockPosition({
-                cartonX: dims.cartonX,
-                cartonZ: dims.cartonZ,
-                x,
-                y,
-                z,
-                length,
-                width,
-                height,
-              })}
-              transparent
-              roughness={0.96}
-            />
-          )
-        })}
       </group>
     </>
   )
@@ -623,7 +237,10 @@ function PackingScene3D({
   recommendation: Recommendation
   viewSyncToken?: number
 }) {
-  const dims = useMemo(() => getSceneDimensions(recommendation), [recommendation])
+  const dims = useMemo(
+    () => getSceneDimensions(recommendation),
+    [recommendation],
+  )
   const [webGlAvailable, setWebGlAvailable] = useState(true)
   const maxSize = Math.max(dims.cartonX, dims.cartonY, dims.cartonZ)
   const groupRef = useRef<THREE.Group>(null)
@@ -710,7 +327,8 @@ function PackingScene3D({
               touches[0].pageY - touches[1].pageY,
             )
             const initialDistance = gestureRef.current.pinchDistance || distance
-            const nextZoom = gestureRef.current.zoom * (initialDistance / distance)
+            const nextZoom =
+              gestureRef.current.zoom * (initialDistance / distance)
 
             viewState.zoom = clamp(nextZoom, 0.68, 1.85)
             invalidateScene()
@@ -744,11 +362,11 @@ function PackingScene3D({
           fov: 32,
           near: 0.1,
           far: 1000,
-          position: [
-            maxSize * 1.55,
-            maxSize * 1.18,
-            maxSize * 1.65,
-          ] as [number, number, number],
+          position: [maxSize * 1.55, maxSize * 1.18, maxSize * 1.65] as [
+            number,
+            number,
+            number,
+          ],
         }}
         dpr={[1, 1.5]}
         frameloop="demand"
@@ -775,13 +393,20 @@ function PackingScene3D({
     <View style={[styles.wrap, styles.fallback]}>
       <Text style={styles.fallbackTitle}>3D preview needs WebGL</Text>
       <Text style={styles.fallbackText}>
-        Enable hardware acceleration or open this app in Chrome, Safari, or Expo Go.
+        Enable hardware acceleration or open this app in Chrome, Safari, or Expo
+        Go.
       </Text>
     </View>
   )
 }
 
-export default memo(PackingScene3D)
+export default memo(
+  PackingScene3D,
+  (previous, next) =>
+    previous.onGestureActiveChange === next.onGestureActiveChange &&
+    previous.viewSyncToken === next.viewSyncToken &&
+    hasSameSceneGeometry(previous.recommendation, next.recommendation),
+)
 
 const styles = StyleSheet.create({
   wrap: {

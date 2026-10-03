@@ -5,6 +5,9 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "scheme": "packingmultilingual",
+    "experiments": {
+      "baseUrl": "/packing-multilingual"
+    },
     "userInterfaceStyle": "light",
     "platforms": [
       "ios",

@@ -26,7 +26,8 @@ export type Carton = {
   service: string
   inner: Dimensions
   outer?: Dimensions
-  maxWeight: number | null
+  volumetricWeightGrams: number | null
+  maxLoadWeightGrams: number | null
   priceYen?: number
   note: string
 }
@@ -34,6 +35,7 @@ export type Carton = {
 export type CushionProfile = {
   id: string
   name: string
+  itemWrapThickness: number
   sidePadding: number
   topPadding: number
   bottomPadding: number
@@ -62,6 +64,7 @@ export type PackedPlacement = {
   length: number
   width: number
   height: number
+  productSize: Dimensions
   weight: number
   layerIndex: number
   rowIndex: number
@@ -146,6 +149,7 @@ type OrderUnit = {
   name: string
   category: string
   size: Dimensions
+  productSize: Dimensions
   weight: number
   fragility: Product['fragility']
   color: string
@@ -171,83 +175,189 @@ type PlacementCandidate = {
   x: number
   y: number
   z: number
-  orientation: Dimensions
+  orientation: PackingOrientation
   score: number
   rowDepthDelta: number
 }
 
 export type PackingStrategy = 'compact' | 'stable'
 
-const MAX_LAYERS = 2
+type PackingOrientation = Dimensions & { productSize: Dimensions }
+
+export type PackingRequest = {
+  products: Product[]
+  cartons: Carton[]
+  cushions: CushionProfile[]
+  orderLines: OrderLine[]
+  strategy?: PackingStrategy
+  maxLayers?: number
+}
+
+export type PackingPlanOptions = {
+  single: Recommendation[]
+  split: SplitPackingRecommendation[]
+}
+
+export const DEFAULT_MAX_LAYERS = 2
 export const LAYER_SEPARATOR_HEIGHT = 10
 const LOCAL_SUPPORT_MIN_COVERAGE = 0.72
 const MAX_SPLIT_BOXES = 5
 const MAX_SPLIT_PARTITIONS_PER_GROUP = 6
 const MAX_MULTI_BOX_GROUPINGS = 24
 
-export function recommendPacking({
-  products,
-  cartons,
-  cushions,
-  orderLines,
-  strategy = 'compact',
-}: {
-  products: Product[]
-  cartons: Carton[]
-  cushions: CushionProfile[]
-  orderLines: OrderLine[]
-  strategy?: PackingStrategy
-}): Recommendation[] {
-  const units = expandOrderUnits(products, orderLines)
-
+export function recommendPacking(request: PackingRequest): Recommendation[] {
+  if (!isValidPackingRequest(request)) return []
   return buildRecommendationsFromUnits({
-    units,
-    cartons,
-    cushions,
-    strategy,
+    ...request,
+    units: expandOrderUnits(request.products, request.orderLines),
+    strategy: request.strategy ?? 'compact',
+    maxLayers: request.maxLayers ?? DEFAULT_MAX_LAYERS,
   })
 }
 
-export function recommendSplitPacking({
-  products,
+export function recommendSplitPacking(
+  request: PackingRequest,
+): SplitPackingRecommendation[] {
+  if (!isValidPackingRequest(request)) return []
+  return buildSplitRecommendationsFromUnits({
+    ...request,
+    units: expandOrderUnits(request.products, request.orderLines),
+    strategy: request.strategy ?? 'compact',
+    maxLayers: request.maxLayers ?? DEFAULT_MAX_LAYERS,
+  })
+}
+
+export function recommendPackingPlans(
+  request: PackingRequest,
+): PackingPlanOptions {
+  if (!isValidPackingRequest(request)) return { single: [], split: [] }
+  const options = {
+    ...request,
+    units: expandOrderUnits(request.products, request.orderLines),
+    strategy: request.strategy ?? 'compact',
+    maxLayers: request.maxLayers ?? DEFAULT_MAX_LAYERS,
+  }
+  return {
+    single: buildRecommendationsFromUnits(options),
+    split: buildSplitRecommendationsFromUnits(options),
+  }
+}
+
+function isValidPackingRequest(request: PackingRequest): boolean {
+  const positive = (value: number) => Number.isFinite(value) && value > 0
+  const validSize = (size: Dimensions) =>
+    positive(size.length) && positive(size.width) && positive(size.height)
+  const nonnegative = (value: number) => Number.isFinite(value) && value >= 0
+  const productsById = new Map(
+    request.products.map((product) => [product.id, product]),
+  )
+  const orderIds = new Set<string>()
+
+  return (
+    (request.strategy === undefined ||
+      request.strategy === 'compact' ||
+      request.strategy === 'stable') &&
+    (request.maxLayers === undefined ||
+      (Number.isInteger(request.maxLayers) && positive(request.maxLayers))) &&
+    productsById.size === request.products.length &&
+    request.orderLines.every((line) => {
+      if (orderIds.has(line.productId)) return false
+      orderIds.add(line.productId)
+      const product = productsById.get(line.productId)
+      return Boolean(
+        product &&
+          validSize(product.size) &&
+          positive(product.weight) &&
+          Number.isInteger(line.quantity) &&
+          line.quantity >= 0 &&
+          line.quantity <= 999 &&
+          typeof line.useItemWrap === 'boolean',
+      )
+    }) &&
+    request.cartons.every(
+      (carton) =>
+        validSize(carton.inner) &&
+        (carton.maxLoadWeightGrams === null ||
+          positive(carton.maxLoadWeightGrams)),
+    ) &&
+    request.cushions.every(
+      (cushion) =>
+        nonnegative(cushion.sidePadding) &&
+        nonnegative(cushion.itemWrapThickness) &&
+        nonnegative(cushion.topPadding) &&
+        nonnegative(cushion.bottomPadding) &&
+        positive(cushion.voidFillUnitVolume) &&
+        Number.isFinite(cushion.stabilityBonus),
+    )
+  )
+}
+
+function buildSplitRecommendationsFromUnits({
+  units,
   cartons,
   cushions,
-  orderLines,
-  strategy = 'compact',
+  strategy,
+  maxLayers,
 }: {
-  products: Product[]
+  units: OrderUnit[]
   cartons: Carton[]
   cushions: CushionProfile[]
-  orderLines: OrderLine[]
-  strategy?: PackingStrategy
+  strategy: PackingStrategy
+  maxLayers: number
 }): SplitPackingRecommendation[] {
-  const units = expandOrderUnits(products, orderLines)
-
   if (units.length < 2) {
     return []
   }
 
   const recommendations = new Map<string, SplitPackingRecommendation>()
+  const groupRecommendationCache = new Map<string, Recommendation[]>()
   const maxBoxCount = Math.min(MAX_SPLIT_BOXES, units.length)
+  const totalItemVolume = totalUnitVolume(units)
+  const largestCartonVolume = cartons.reduce(
+    (largest, carton) => Math.max(largest, volume(carton.inner)),
+    0,
+  )
+
+  if (totalItemVolume > largestCartonVolume * maxBoxCount) {
+    return []
+  }
+
+  const getGroupRecommendations = (group: OrderUnit[]) => {
+    const cacheKey = group
+      .map((unit) => unit.instanceId)
+      .sort()
+      .join('|')
+    const cached = groupRecommendationCache.get(cacheKey)
+
+    if (cached) {
+      return cached
+    }
+
+    const nextRecommendations = buildRecommendationsFromUnits({
+      units: group,
+      cartons,
+      cushions,
+      strategy,
+      maxLayers,
+    }).slice(0, 2)
+
+    groupRecommendationCache.set(cacheKey, nextRecommendations)
+    return nextRecommendations
+  }
 
   for (let boxCount = 2; boxCount <= maxBoxCount; boxCount += 1) {
     const groupings = generateMultiBoxGroupings(units, boxCount)
 
     for (const groups of groupings) {
-      const recommendationSets = groups.map((group) =>
-        buildRecommendationsFromUnits({
-          units: group,
-          cartons,
-          cushions,
-          strategy,
-        }).slice(0, 2),
-      )
+      const recommendationSets = groups.map(getGroupRecommendations)
 
       if (recommendationSets.some((set) => set.length === 0)) {
         continue
       }
 
-      for (const combination of buildRecommendationCombinations(recommendationSets)) {
+      for (const combination of buildRecommendationCombinations(
+        recommendationSets,
+      )) {
         const boxes = combination
           .map((recommendation, index) => ({
             boxIndex: index + 1,
@@ -263,7 +373,9 @@ export function recommendSplitPacking({
               return volumeDiff
             }
 
-            return right.recommendation.totalWeight - left.recommendation.totalWeight
+            return (
+              right.recommendation.totalWeight - left.recommendation.totalWeight
+            )
           })
 
         const combined = buildSplitRecommendation(boxes, strategy)
@@ -276,22 +388,21 @@ export function recommendSplitPacking({
     }
   }
 
-  return [...recommendations.values()]
-    .sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score
-      }
+  return [...recommendations.values()].sort((left, right) => {
+    if (right.score !== left.score) {
+      return right.score - left.score
+    }
 
-      if (right.effectiveFillRate !== left.effectiveFillRate) {
-        return right.effectiveFillRate - left.effectiveFillRate
-      }
+    if (right.effectiveFillRate !== left.effectiveFillRate) {
+      return right.effectiveFillRate - left.effectiveFillRate
+    }
 
-      if (left.boxCount !== right.boxCount) {
-        return left.boxCount - right.boxCount
-      }
+    if (left.boxCount !== right.boxCount) {
+      return left.boxCount - right.boxCount
+    }
 
-      return left.totalEmptyVolume - right.totalEmptyVolume
-    })
+    return left.totalEmptyVolume - right.totalEmptyVolume
+  })
 }
 
 function buildRecommendationsFromUnits({
@@ -299,11 +410,13 @@ function buildRecommendationsFromUnits({
   cartons,
   cushions,
   strategy,
+  maxLayers,
 }: {
   units: OrderUnit[]
   cartons: Carton[]
   cushions: CushionProfile[]
   strategy: PackingStrategy
+  maxLayers: number
 }): Recommendation[] {
   const maxFragility = getMaxFragility(units)
 
@@ -316,11 +429,28 @@ function buildRecommendationsFromUnits({
   const recommendations: Recommendation[] = []
 
   for (const carton of cartons) {
-    if (carton.maxWeight !== null && totalWeight > carton.maxWeight) {
+    if (
+      carton.maxLoadWeightGrams !== null &&
+      totalWeight > carton.maxLoadWeightGrams
+    ) {
       continue
     }
 
     for (const cushion of cushions) {
+      const wrapPadding = getItemWrapPadding(cushion)
+      const packagedUnits = units.map((unit) =>
+        unit.useItemWrap
+          ? {
+              ...unit,
+              size: {
+                length: unit.size.length + wrapPadding.side * 2,
+                width: unit.size.width + wrapPadding.side * 2,
+                height: unit.size.height + wrapPadding.vertical * 2,
+              },
+            }
+          : unit,
+      )
+      const packagedVolume = totalUnitVolume(packagedUnits)
       const bottomFillHeight = getRecommendedBottomFillHeight({
         cushion,
         totalWeight,
@@ -345,20 +475,41 @@ function buildRecommendationsFromUnits({
         continue
       }
 
-      const packed = packUnits(units, effectiveInner, strategy)
+      const effectiveVolume = volume(effectiveInner)
+
+      if (packagedVolume > effectiveVolume) {
+        continue
+      }
+
+      const packed = packUnits(
+        packagedUnits,
+        effectiveInner,
+        strategy,
+        maxLayers,
+      )
 
       if (!packed) {
         continue
       }
 
       const scoreProfile = getStrategyScoreProfile(strategy)
-      const effectiveVolume = volume(effectiveInner)
-      const emptyVolume = Math.max(effectiveVolume - itemVolume, 0)
+      const separatorVolume =
+        Math.max(packed.layers.length - 1, 0) *
+        effectiveInner.length *
+        effectiveInner.width *
+        LAYER_SEPARATOR_HEIGHT
+      const emptyVolume = Math.max(
+        effectiveVolume - packagedVolume - separatorVolume,
+        0,
+      )
       const topEmptyHeight = getTopEmptyHeight({
         effectiveInner,
         placements: packed.placements,
       })
-      const appliedTopVoidFillHeight = Math.min(topVoidFillHeight, topEmptyHeight)
+      const appliedTopVoidFillHeight = Math.min(
+        topVoidFillHeight,
+        topEmptyHeight,
+      )
       const recommendedVoidFillVolume = calculateRecommendedVoidFillVolume({
         effectiveInner,
         placements: packed.placements,
@@ -369,7 +520,10 @@ function buildRecommendationsFromUnits({
         })),
         topVoidFillHeight: appliedTopVoidFillHeight,
       })
-      const unusedTopHeight = Math.max(topEmptyHeight - appliedTopVoidFillHeight, 0)
+      const unusedTopHeight = Math.max(
+        topEmptyHeight - appliedTopVoidFillHeight,
+        0,
+      )
       const unusedVolume = Math.max(emptyVolume - recommendedVoidFillVolume, 0)
       const fillRate = itemVolume / volume(carton.inner)
       const effectiveFillRate = itemVolume / effectiveVolume
@@ -392,8 +546,9 @@ function buildRecommendationsFromUnits({
       const score = Math.round(
         effectiveFillRate * scoreProfile.fillWeight +
           stabilityScore * scoreProfile.stabilityWeight -
-          emptyVolume / 1_000_000 * scoreProfile.emptyVolumePenalty -
-          Math.max(packed.layers.length - 1, 0) * scoreProfile.extraLayerPenalty -
+          (emptyVolume / 1_000_000) * scoreProfile.emptyVolumePenalty -
+          Math.max(packed.layers.length - 1, 0) *
+            scoreProfile.extraLayerPenalty -
           protectionPenalty,
       )
 
@@ -512,14 +667,10 @@ export function formatPackingStrategy(
 
 export type DisplayItemWrapKind = 'wrap' | 'paper-fill'
 
-export function getDisplayItemWrapPadding(cushion: CushionProfile) {
+export function getItemWrapPadding(cushion: CushionProfile) {
   return {
-    side: clamp(Math.round(cushion.sidePadding * 0.55), 2, 6),
-    vertical: clamp(
-      Math.round(Math.min(cushion.topPadding, cushion.bottomPadding) * 0.5),
-      2,
-      6,
-    ),
+    side: cushion.itemWrapThickness,
+    vertical: cushion.itemWrapThickness,
   }
 }
 
@@ -572,7 +723,10 @@ export function getSplitRecommendationReasons(
   recommendation: SplitPackingRecommendation,
   locale: SupportedLocale = 'ja',
 ): string[] {
-  const effectiveFillRateText = formatPercent(recommendation.effectiveFillRate, locale)
+  const effectiveFillRateText = formatPercent(
+    recommendation.effectiveFillRate,
+    locale,
+  )
   const totalEmptyVolumeText = formatVolumeLiters(
     recommendation.totalEmptyVolume,
     locale,
@@ -609,7 +763,9 @@ export function getSplitRecommendationReasons(
   ]
 }
 
-export function buildVoidFillBlocks(recommendation: Recommendation): VoidFillBlock[] {
+export function buildVoidFillBlocks(
+  recommendation: Recommendation,
+): VoidFillBlock[] {
   return buildVoidFillBlocksFromLayout({
     effectiveInner: recommendation.effectiveInner,
     placements: recommendation.placements,
@@ -630,7 +786,9 @@ function buildVoidFillBlocksFromLayout({
   topVoidFillHeight: number
 }): VoidFillBlock[] {
   const blocks: VoidFillBlock[] = []
-  const sortedLayers = [...layers].sort((left, right) => left.index - right.index)
+  const sortedLayers = [...layers].sort(
+    (left, right) => left.index - right.index,
+  )
 
   for (const layer of sortedLayers) {
     const layerPlacements = placements
@@ -671,7 +829,9 @@ function buildVoidFillBlocksFromLayout({
     for (const row of sortedRows) {
       let cursor = 0
 
-      for (const placement of row.placements.sort((left, right) => left.x - right.x)) {
+      for (const placement of row.placements.sort(
+        (left, right) => left.x - right.x,
+      )) {
         if (placement.x > cursor) {
           blocks.push({
             id: `${placement.instanceId}-front-gap`,
@@ -753,7 +913,10 @@ function buildVoidFillBlocksFromLayout({
     0,
   )
 
-  const topFillHeight = Math.min(topVoidFillHeight, Math.max(effectiveInner.height - usedHeight, 0))
+  const topFillHeight = Math.min(
+    topVoidFillHeight,
+    Math.max(effectiveInner.height - usedHeight, 0),
+  )
 
   if (topFillHeight > 0) {
     blocks.push({
@@ -825,7 +988,7 @@ function buildRecommendationReasons({
     const layerSummary =
       packedLayers === 1
         ? '当前为单层结构，不易在运输中散乱。'
-        : `当前为 ${packedLayers} 层结构，本次设置最多允许 2 层。`
+        : `当前为 ${packedLayers} 层结构，层间使用 1cm 厚的缓冲材分隔。`
 
     return [
       `当前包装策略为“${packingStrategy}”。`,
@@ -843,7 +1006,7 @@ function buildRecommendationReasons({
     const layerSummary =
       packedLayers === 1
         ? 'Everything fits in a single layer, which helps reduce shifting.'
-        : `The layout uses ${packedLayers} layers. This prototype currently caps the layout at two layers.`
+        : `The layout uses ${packedLayers} layers, separated by 1cm cushioning sheets.`
 
     return [
       `The selected packing strategy is "${packingStrategy}".`,
@@ -860,7 +1023,7 @@ function buildRecommendationReasons({
   const layerSummary =
     packedLayers === 1
       ? '1段で収まり、荷崩れしにくい構成です。'
-      : `${packedLayers}段構成です。今回の設定では最大2段までで組んでいます。`
+      : `${packedLayers}段構成です。段間は1cm厚の緩衝材で仕切っています。`
 
   return [
     `梱包方針は「${packingStrategy}」です。`,
@@ -874,7 +1037,10 @@ function buildRecommendationReasons({
   ]
 }
 
-function expandOrderUnits(products: Product[], orderLines: OrderLine[]): OrderUnit[] {
+function expandOrderUnits(
+  products: Product[],
+  orderLines: OrderLine[],
+): OrderUnit[] {
   const productMap = new Map(products.map((product) => [product.id, product]))
   const units: OrderUnit[] = []
 
@@ -893,6 +1059,7 @@ function expandOrderUnits(products: Product[], orderLines: OrderLine[]): OrderUn
         name: product.name,
         category: product.category,
         size: product.size,
+        productSize: product.size,
         weight: product.weight,
         fragility: product.fragility,
         color: product.color,
@@ -928,6 +1095,7 @@ function packUnits(
   units: OrderUnit[],
   bounds: Dimensions,
   strategy: PackingStrategy,
+  maxLayers: number,
 ) {
   const layers: LayerFrame[] = []
   const placements: PackedPlacement[] = []
@@ -940,6 +1108,7 @@ function packUnits(
       bounds,
       strategy,
       allowNewLayer: false,
+      maxLayers,
     })
 
     if (!bestCandidate) {
@@ -950,6 +1119,7 @@ function packUnits(
         bounds,
         strategy,
         allowNewLayer: true,
+        maxLayers,
       })
     }
 
@@ -1006,6 +1176,7 @@ function packUnits(
       length: bestCandidate.orientation.length,
       width: bestCandidate.orientation.width,
       height: bestCandidate.orientation.height,
+      productSize: bestCandidate.orientation.productSize,
       weight: unit.weight,
       layerIndex: bestCandidate.layerIndex,
       rowIndex: bestCandidate.rowIndex,
@@ -1022,6 +1193,7 @@ function findBestPlacementCandidate({
   bounds,
   strategy,
   allowNewLayer,
+  maxLayers,
 }: {
   unit: OrderUnit
   layers: LayerFrame[]
@@ -1029,6 +1201,7 @@ function findBestPlacementCandidate({
   bounds: Dimensions
   strategy: PackingStrategy
   allowNewLayer: boolean
+  maxLayers: number
 }) {
   let bestCandidate: PlacementCandidate | null = null
 
@@ -1042,6 +1215,7 @@ function findBestPlacementCandidate({
       strategy,
       productId: unit.productId,
       allowNewLayer,
+      maxLayers,
     })
 
     if (!candidate) {
@@ -1086,15 +1260,17 @@ function findPlacementCandidate({
   strategy,
   productId,
   allowNewLayer,
+  maxLayers,
 }: {
   layers: LayerFrame[]
   placements: PackedPlacement[]
   bounds: Dimensions
-  orientation: Dimensions
+  orientation: PackingOrientation
   fragility: Product['fragility']
   strategy: PackingStrategy
   productId: string
   allowNewLayer: boolean
+  maxLayers: number
 }): PlacementCandidate | null {
   let bestCandidate: PlacementCandidate | null = null
   const tuning = getStrategyPlacementTuning(strategy)
@@ -1120,7 +1296,8 @@ function findPlacementCandidate({
       ).length
       const rowDepthDelta = Math.max(orientation.width - row.depth, 0)
       const usedWidth =
-        layer.rows.reduce((sum, currentRow) => sum + currentRow.depth, 0) + rowDepthDelta
+        layer.rows.reduce((sum, currentRow) => sum + currentRow.depth, 0) +
+        rowDepthDelta
 
       if (
         usedWidth <= bounds.width &&
@@ -1138,8 +1315,10 @@ function findPlacementCandidate({
           continue
         }
 
-        const remainingLength = bounds.length - (row.cursor + orientation.length)
-        const depthSlack = Math.max(row.depth, orientation.width) - orientation.width
+        const remainingLength =
+          bounds.length - (row.cursor + orientation.length)
+        const depthSlack =
+          Math.max(row.depth, orientation.width) - orientation.width
         const candidate: PlacementCandidate = {
           mode: 'existing-row' as const,
           layerIndex,
@@ -1156,8 +1335,16 @@ function findPlacementCandidate({
             depthSlack * tuning.depthSlackPenalty +
             row.y * 2 +
             rowDepthDelta * tuning.rowDepthPenalty +
-            mixedProductPenalty(layerPlacements, sameProductLayerCount, tuning) -
-            productGroupingBonus(sameProductLayerCount, sameProductRowCount, tuning) +
+            mixedProductPenalty(
+              layerPlacements,
+              sameProductLayerCount,
+              tuning,
+            ) -
+            productGroupingBonus(
+              sameProductLayerCount,
+              sameProductRowCount,
+              tuning,
+            ) +
             layerSupportPenalty(fragility, layerIndex, strategy) +
             fragilityPenalty(fragility, orientation, strategy),
         }
@@ -1224,7 +1411,7 @@ function findPlacementCandidate({
 
   if (
     allowNewLayer &&
-    layers.length < MAX_LAYERS &&
+    layers.length < maxLayers &&
     nextLayerZ + orientation.height <= bounds.height &&
     orientation.length <= bounds.length &&
     orientation.width <= bounds.width
@@ -1389,16 +1576,28 @@ function expandRowDepth({
   }
 }
 
-function getOrientations(unit: OrderUnit, strategy: PackingStrategy): Dimensions[] {
-  const { length, width, height } = unit.size
-  const options: Dimensions[] = [
-    { length, width, height },
-    { length, width: height, height: width },
-    { length: width, width: length, height },
-    { length: width, width: height, height: length },
-    { length: height, width: length, height: width },
-    { length: height, width, height: length },
-  ]
+function getOrientations(
+  unit: OrderUnit,
+  strategy: PackingStrategy,
+): PackingOrientation[] {
+  const permutations = [
+    ['length', 'width', 'height'],
+    ['length', 'height', 'width'],
+    ['width', 'length', 'height'],
+    ['width', 'height', 'length'],
+    ['height', 'length', 'width'],
+    ['height', 'width', 'length'],
+  ] as const
+  const options = permutations.map(([length, width, height]) => ({
+    length: unit.size[length],
+    width: unit.size[width],
+    height: unit.size[height],
+    productSize: {
+      length: unit.productSize[length],
+      width: unit.productSize[width],
+      height: unit.productSize[height],
+    },
+  }))
 
   const unique = Array.from(
     new Map(options.map((option) => [dimensionKey(option), option])).values(),
@@ -1440,14 +1639,19 @@ function scoreStability({
     }, 0) / totalWeight
 
   const lowerHalfWeight = placements
-    .filter((placement) => placement.z + placement.height / 2 <= effectiveInner.height / 2)
+    .filter(
+      (placement) =>
+        placement.z + placement.height / 2 <= effectiveInner.height / 2,
+    )
     .reduce((sum, placement) => sum + placement.weight, 0)
 
   const lowerHalfRatio = lowerHalfWeight / totalWeight
-  const fillRatio = placements.reduce(
-    (sum, placement) => sum + placement.length * placement.width * placement.height,
-    0,
-  ) / volume(effectiveInner)
+  const fillRatio =
+    placements.reduce(
+      (sum, placement) =>
+        sum + placement.length * placement.width * placement.height,
+      0,
+    ) / volume(effectiveInner)
 
   const stability = Math.round(
     58 +
@@ -1592,7 +1796,9 @@ function stackingFootprintPenalty(
     return 0
   }
 
-  return orientation.length * orientation.width * tuning.upperLayerFootprintPenalty
+  return (
+    orientation.length * orientation.width * tuning.upperLayerFootprintPenalty
+  )
 }
 
 function getStackTop(layers: LayerFrame[]) {
@@ -1613,7 +1819,10 @@ function getNextLayerZ(layers: LayerFrame[]) {
   return getStackTop(layers) + LAYER_SEPARATOR_HEIGHT
 }
 
-function getLayerFootprintArea(placements: PackedPlacement[], layerIndex: number) {
+function getLayerFootprintArea(
+  placements: PackedPlacement[],
+  layerIndex: number,
+) {
   return placements.reduce((sum, placement) => {
     if (placement.layerIndex !== layerIndex) {
       return sum
@@ -1687,7 +1896,10 @@ function buildSplitRecommendation(
     totalWeight > 0
       ? Math.round(
           normalizedBoxes.reduce((sum, box) => {
-            return sum + box.recommendation.stabilityScore * box.recommendation.totalWeight
+            return (
+              sum +
+              box.recommendation.stabilityScore * box.recommendation.totalWeight
+            )
           }, 0) / totalWeight,
         )
       : 0
@@ -1696,7 +1908,7 @@ function buildSplitRecommendation(
   const score = Math.round(
     effectiveFillRate * scoreProfile.fillWeight +
       stabilityScore * scoreProfile.stabilityWeight -
-      totalEmptyVolume / 1_000_000 * scoreProfile.emptyVolumePenalty -
+      (totalEmptyVolume / 1_000_000) * scoreProfile.emptyVolumePenalty -
       splitPenalty,
   )
   const boxCount = normalizedBoxes.length
@@ -1727,7 +1939,9 @@ function buildSplitRecommendation(
   }
 }
 
-function buildRecommendationCombinations(recommendationSets: Recommendation[][]) {
+function buildRecommendationCombinations(
+  recommendationSets: Recommendation[][],
+) {
   const combinations: Recommendation[][] = []
   const current: Recommendation[] = []
 
@@ -1768,10 +1982,9 @@ function generateMultiBoxGroupings(
           continue
         }
 
-        const partitions = rankSplitPartitions(generateSplitPartitions(group)).slice(
-          0,
-          MAX_SPLIT_PARTITIONS_PER_GROUP,
-        )
+        const partitions = rankSplitPartitions(
+          generateSplitPartitions(group),
+        ).slice(0, MAX_SPLIT_PARTITIONS_PER_GROUP)
 
         for (const [left, right] of partitions) {
           const candidate = normalizeUnitGrouping([
@@ -1797,7 +2010,9 @@ function generateMultiBoxGroupings(
   return frontier.filter((grouping) => grouping.length === targetBoxCount)
 }
 
-function generateSplitPartitions(units: OrderUnit[]): Array<[OrderUnit[], OrderUnit[]]> {
+function generateSplitPartitions(
+  units: OrderUnit[],
+): Array<[OrderUnit[], OrderUnit[]]> {
   if (units.length < 2) {
     return []
   }
@@ -1901,7 +2116,9 @@ function rebalanceEmptySplit(
 ) {
   if (left.length === 0 && fallback.length > 1) {
     left.push(fallback[0])
-    const index = right.findIndex((unit) => unit.instanceId === fallback[0].instanceId)
+    const index = right.findIndex(
+      (unit) => unit.instanceId === fallback[0].instanceId,
+    )
     if (index >= 0) {
       right.splice(index, 1)
     }
@@ -1909,7 +2126,9 @@ function rebalanceEmptySplit(
 
   if (right.length === 0 && fallback.length > 1) {
     right.push(fallback[0])
-    const index = left.findIndex((unit) => unit.instanceId === fallback[0].instanceId)
+    const index = left.findIndex(
+      (unit) => unit.instanceId === fallback[0].instanceId,
+    )
     if (index >= 0) {
       left.splice(index, 1)
     }
@@ -1947,11 +2166,15 @@ function summarizeUnits(units: OrderUnit[]) {
     })
   }
 
-  return [...summary.values()].sort((left, right) => left.name.localeCompare(right.name))
+  return [...summary.values()].sort((left, right) =>
+    left.name.localeCompare(right.name),
+  )
 }
 
 function normalizeUnitGroup(units: OrderUnit[]): OrderUnit[] {
-  return [...units].sort((left, right) => left.instanceId.localeCompare(right.instanceId))
+  return [...units].sort((left, right) =>
+    left.instanceId.localeCompare(right.instanceId),
+  )
 }
 
 function normalizeUnitGrouping(groups: OrderUnit[][]): OrderUnit[][] {
@@ -1970,16 +2193,26 @@ function normalizeUnitGrouping(groups: OrderUnit[][]): OrderUnit[][] {
         return weightDiff
       }
 
-      return buildUnitCountSignature(left).localeCompare(buildUnitCountSignature(right))
+      return buildUnitCountSignature(left).localeCompare(
+        buildUnitCountSignature(right),
+      )
     })
 }
 
-function buildUnitGroupSignature(left: OrderUnit[], right: OrderUnit[]): string {
-  return [buildUnitCountSignature(left), buildUnitCountSignature(right)].sort().join('|')
+function buildUnitGroupSignature(
+  left: OrderUnit[],
+  right: OrderUnit[],
+): string {
+  return [buildUnitCountSignature(left), buildUnitCountSignature(right)]
+    .sort()
+    .join('|')
 }
 
 function buildGroupingSignature(groups: OrderUnit[][]): string {
-  return groups.map((group) => buildUnitCountSignature(group)).sort().join('|')
+  return groups
+    .map((group) => buildUnitCountSignature(group))
+    .sort()
+    .join('|')
 }
 
 function buildUnitCountSignature(units: OrderUnit[]): string {
@@ -1995,7 +2228,9 @@ function buildUnitCountSignature(units: OrderUnit[]): string {
     .join(',')
 }
 
-function buildUnitCountSignatureFromItems(items: SplitPackingBox['items']): string {
+function buildUnitCountSignatureFromItems(
+  items: SplitPackingBox['items'],
+): string {
   return items
     .map((item) => `${item.productId}:${item.quantity}`)
     .sort()

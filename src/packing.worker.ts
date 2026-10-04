@@ -1,26 +1,21 @@
 import {
-  recommendPackingPlans,
-  type PackingPlanOptions,
-  type PackingRequest,
-} from '@/packing'
-import { getVisiblePackingPlans } from '@/packingTaskShared'
+  calculateWorkerRequest,
+  type PackingWorkerRequest,
+  type PackingWorkerResult,
+} from '@/packingWorkerEngine'
 
 const workerScope = self as unknown as {
-  onmessage: (event: MessageEvent<PackingRequest>) => void
-  postMessage: (
-    response: { options: PackingPlanOptions } | { error: string },
-  ) => void
+  onmessage: (event: MessageEvent<PackingWorkerRequest>) => void
+  postMessage: (response: PackingWorkerResult | { error: string }) => void
 }
 
 workerScope.onmessage = ({ data }) => {
-  try {
-    workerScope.postMessage({
-      options: getVisiblePackingPlans(recommendPackingPlans(data)),
+  void calculateWorkerRequest(data)
+    .then((result) => workerScope.postMessage(result))
+    .catch((error: unknown) => {
+      workerScope.postMessage({
+        error:
+          error instanceof Error ? error.message : 'Packing calculation failed',
+      })
     })
-  } catch (error) {
-    workerScope.postMessage({
-      error:
-        error instanceof Error ? error.message : 'Packing calculation failed',
-    })
-  }
 }

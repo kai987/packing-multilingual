@@ -1,4 +1,5 @@
 import type { PackingPlanOptions, PackingRequest } from '@/packing'
+import type { PackingBackend, PackingWorkerResult } from '@/packingWorkerEngine'
 import {
   createPackingTask as createFallbackTask,
   type PackingTask,
@@ -8,6 +9,8 @@ export function createPackingTask(request: PackingRequest): PackingTask {
   if (typeof Worker === 'undefined') return createFallbackTask(request)
   const worker = new Worker(new URL('./packing.worker', window.location.href))
   let settled = false
+  let backend: PackingBackend = 'typescript'
+  let usedFallback = false
   let timeout: ReturnType<typeof setTimeout> | undefined
   let rejectResult: (error: Error) => void = () => undefined
   const close = () => {
@@ -24,10 +27,13 @@ export function createPackingTask(request: PackingRequest): PackingTask {
     }, 30_000)
     worker.onmessage = ({
       data,
-    }: MessageEvent<{ options?: PackingPlanOptions; error?: string }>) => {
+    }: MessageEvent<Partial<PackingWorkerResult> & { error?: string }>) => {
       if (!close()) return
-      if (data.options) resolve(data.options)
-      else reject(new Error(data.error ?? 'Packing worker failed'))
+      if (data.options) {
+        backend = data.backend ?? 'typescript'
+        usedFallback = data.usedFallback ?? false
+        resolve(data.options)
+      } else reject(new Error(data.error ?? 'Packing worker failed'))
     }
     worker.onerror = (event) => {
       if (close()) reject(new Error(event.message || 'Packing worker failed'))
@@ -36,15 +42,31 @@ export function createPackingTask(request: PackingRequest): PackingTask {
       if (close()) reject(new Error('Could not decode packing results'))
     }
     try {
-      worker.postMessage(request)
+      worker.postMessage({
+        request,
+        manifestUrl: getPackingManifestUrl(window.location.href),
+      })
     } catch (error) {
       if (close()) reject(error)
     }
   })
   return {
     result,
+    get backend() {
+      return backend
+    },
+    get usedFallback() {
+      return usedFallback
+    },
     cancel: () => {
       if (close()) rejectResult(new Error('Packing calculation cancelled'))
     },
   }
+}
+
+export function getPackingManifestUrl(pageUrl: string): string {
+  const base = new URL(pageUrl)
+  if (!base.pathname.endsWith('/') && !base.pathname.endsWith('.html'))
+    base.pathname += '/'
+  return new URL('wasm/manifest.json', base).href
 }

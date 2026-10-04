@@ -1,9 +1,12 @@
 import type { PackingPlanOptions, PackingRequest } from '@/packing'
 import { getVisiblePackingPlans } from '@/packingTaskShared'
+import type { PackingBackend } from '@/packingWorkerEngine'
 
 export type PackingTask = {
   result: Promise<PackingPlanOptions>
   cancel: () => void
+  readonly backend: PackingBackend
+  readonly usedFallback: boolean
 }
 
 export function createPackingTask(request: PackingRequest): PackingTask {
@@ -23,6 +26,8 @@ export function createPackingTask(request: PackingRequest): PackingTask {
   })
   return {
     result,
+    backend: 'typescript',
+    usedFallback: false,
     cancel: () => {
       cancelled = true
       clearTimeout(timer)

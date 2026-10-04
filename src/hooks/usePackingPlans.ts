@@ -1,6 +1,7 @@
 import { startTransition, useCallback, useEffect, useState } from 'react'
 import type { PackingPlanOptions, PackingRequest } from '@/packing'
 import { createPackingTask, type PackingTask } from '@/packingTask'
+import type { PackingBackend } from '@/packingWorkerEngine'
 
 const emptyOptions: PackingPlanOptions = { single: [], split: [] }
 
@@ -11,19 +12,36 @@ export function usePackingPlans(request: PackingRequest) {
     retryToken: number
     options: PackingPlanOptions
     error: string | null
-  }>({ request: null, retryToken: 0, options: emptyOptions, error: null })
+    backend: PackingBackend | null
+    usedFallback: boolean
+  }>({
+    request: null,
+    retryToken: 0,
+    options: emptyOptions,
+    error: null,
+    backend: null,
+    usedFallback: false,
+  })
 
   useEffect(() => {
     let active = true
     let task: PackingTask | undefined
     const timer = setTimeout(() => {
       try {
-        task = createPackingTask(request)
-        void task.result
+        const currentTask = createPackingTask(request)
+        task = currentTask
+        void currentTask.result
           .then((options) => {
             if (!active) return
             startTransition(() =>
-              setResult({ request, retryToken, options, error: null }),
+              setResult({
+                request,
+                retryToken,
+                options,
+                error: null,
+                backend: currentTask.backend,
+                usedFallback: currentTask.usedFallback,
+              }),
             )
           })
           .catch((error: unknown) => {
@@ -33,6 +51,8 @@ export function usePackingPlans(request: PackingRequest) {
               retryToken,
               options: emptyOptions,
               error: String(error),
+              backend: null,
+              usedFallback: false,
             })
           })
       } catch (error) {
@@ -42,6 +62,8 @@ export function usePackingPlans(request: PackingRequest) {
             retryToken,
             options: emptyOptions,
             error: String(error),
+            backend: null,
+            usedFallback: false,
           })
       }
     }, 150)
@@ -60,5 +82,7 @@ export function usePackingPlans(request: PackingRequest) {
     isCalculating,
     error: isCalculating ? null : result.error,
     retry,
+    backend: result.backend,
+    usedFallback: result.usedFallback,
   }
 }

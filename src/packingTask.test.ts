@@ -1,15 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cartons, cushions, defaultOrderLines, products } from '@/data'
 import { recommendPackingPlans, type PackingPlanOptions } from '@/packing'
-import { createPackingTask } from '@/packingTask.web'
+import { createPackingTask, getPackingManifestUrl } from '@/packingTask.web'
 import { getVisiblePackingPlans } from '@/packingTaskShared'
+import type { PackingWorkerResult } from '@/packingWorkerEngine'
 
 const request = { products, cartons, cushions, orderLines: defaultOrderLines }
 const workers: FakeWorker[] = []
 
 class FakeWorker {
   onmessage:
-    | ((event: MessageEvent<{ options: PackingPlanOptions }>) => void)
+    | ((event: MessageEvent<Partial<PackingWorkerResult>>) => void)
     | null = null
   onerror: ((event: ErrorEvent) => void) | null = null
   terminate = vi.fn()
@@ -26,20 +27,56 @@ afterEach(() => {
 })
 
 describe('packing task', () => {
-  it('sends inputs to a worker and returns the same algorithm result', async () => {
+  it.each([
+    [
+      'https://example.com/packing-multilingual/',
+      'https://example.com/packing-multilingual/wasm/manifest.json',
+    ],
+    [
+      'https://example.com/packing-multilingual',
+      'https://example.com/packing-multilingual/wasm/manifest.json',
+    ],
+    [
+      'https://example.com/packing-multilingual/index.html',
+      'https://example.com/packing-multilingual/wasm/manifest.json',
+    ],
+    ['http://localhost:8081/', 'http://localhost:8081/wasm/manifest.json'],
+  ])('resolves WASM assets for %s', (pageUrl, expected) => {
+    expect(getPackingManifestUrl(pageUrl)).toBe(expected)
+  })
+  it('sends inputs and exposes Rust backend metadata before resolving', async () => {
     vi.stubGlobal('Worker', FakeWorker)
     vi.stubGlobal('window', {
       location: { href: 'https://example.com/packing-multilingual/' },
     })
     const task = createPackingTask(request)
     const worker = workers[0]
-    expect(worker.postMessage).toHaveBeenCalledWith(request)
-    const options = recommendPackingPlans(request)
-    worker.onmessage?.({ data: { options } } as MessageEvent<{
-      options: PackingPlanOptions
-    }>)
+    expect(worker.postMessage).toHaveBeenCalledWith({
+      request,
+      manifestUrl:
+        'https://example.com/packing-multilingual/wasm/manifest.json',
+    })
+    const options = getVisiblePackingPlans(recommendPackingPlans(request))
+    worker.onmessage?.({
+      data: { options, backend: 'rust-wasm', usedFallback: false },
+    } as MessageEvent<PackingWorkerResult>)
     expect(await task.result).toEqual(options)
+    expect(task.backend).toBe('rust-wasm')
+    expect(task.usedFallback).toBe(false)
     expect(worker.terminate).toHaveBeenCalledOnce()
+  })
+
+  it('exposes the worker fallback status to the UI', async () => {
+    vi.stubGlobal('Worker', FakeWorker)
+    vi.stubGlobal('window', { location: { href: 'https://example.com/' } })
+    const task = createPackingTask(request)
+    const options: PackingPlanOptions = { single: [], split: [] }
+    workers[0].onmessage?.({
+      data: { options, backend: 'typescript', usedFallback: true },
+    } as MessageEvent<PackingWorkerResult>)
+    expect(await task.result).toEqual(options)
+    expect(task.backend).toBe('typescript')
+    expect(task.usedFallback).toBe(true)
   })
 
   it('terminates obsolete work independently of a replacement task', async () => {
@@ -77,6 +114,8 @@ describe('packing task', () => {
     expect(await task.result).toEqual(
       getVisiblePackingPlans(recommendPackingPlans(request)),
     )
+    expect(task.backend).toBe('typescript')
+    expect(task.usedFallback).toBe(false)
   })
 
   it('times out a worker that never responds and releases its resources', async () => {

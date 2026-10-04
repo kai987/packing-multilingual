@@ -33,9 +33,14 @@ Expo CLI が起動したら、ターミナルの QR コードを Expo Go また�
 
 Web で確認する場合:
 
+Rust 1.93以降とWASMターゲットが必要です。`wasm-bindgen-cli` 0.2.129は初回ビルド時にプロジェクト内の `.tools/` へ自動インストールされます。初回はツールの取得・コンパイルに時間がかかります。グローバルのCLIは変更しません。
+
 ```bash
+rustup target add wasm32-unknown-unknown
 npm run web
 ```
+
+`npm run start` からWebを開く場合は、先に `npm run build:wasm` を実行してください。iOS / Androidは従来のTypeScriptエンジンを使用し、Rustのネイティブライブラリ導入や開発ビルドへの変更はありません。
 
 ## コマンド
 
@@ -44,13 +49,26 @@ npm run web
 - `npm run ios`
 - `npm run web`
 - `npm test`
+- `npm run test:rust`
+- `npm run bench:packing`
+- `npm run build:wasm`
 - `npm run typecheck`
 - `npm run lint`
 - `npm run build`
 
 公開用ビルドは `/packing-multilingual` 配下への配信を前提にしています。別のURLへ配置する場合は `app.json` の `expo.experiments.baseUrl` を変更してください。
 
-GitHub Actions は型チェック、lint、回帰テスト、Web build がすべて成功した場合のみ公開します。
+GitHub Actions はRustのformat / clippy / test、型チェック、lint、TS / WASM回帰テスト、Web build がすべて成功した場合のみ公開します。`npm test` と `npm run build` は先にWASMを生成します。
+
+## Rust / Web WASM
+
+- `rust/packing-core/` は単箱の配置、分割探索、包装外寸、支持面積、スコア、空隙・緩衝材量を計算するRustライブラリです。`Cargo.lock` を共有し、CIではRust 1.93.0を使用します。
+- Webは既存Worker内でWASMを初期化してから計算します。画面・翻訳・Three.js・レイヤー俯瞰図はTypeScriptのままです。
+- 計算APIは従来の `PackingRequest` / `PackingPlanOptions` を維持し、Workerへ返す各種上位3案のみをRust側でJSON化します。
+- `scripts/build-wasm.mjs` が内容ハッシュ付きのJS / WASMと `manifest.json` を `public/wasm/` に生成します。Expo exportが `dist/wasm/` へコピーするため、GitHub Pages以外のサーバーは不要です。生成物・ビルドツールはGit管理外です。
+- リソースの404、初期化失敗、計算例外、5秒のfetchタイムアウト時はWorker内のTypeScriptへフォールバックし、画面に代替計算であることを表示します。Worker全体の30秒タイムアウトとキャンセルは維持します。
+- IDや分箱署名の比較はTS / Rust共通のUTF-16辞書順とし、言語環境による候補順の差を防ぎます。表示用の商品名はJavaScript側でローカライズされた照合順に並べます。
+- 既存の装箱テストを両エンジンで実行し、シード固定の混載注文などの全候補・座標・指標も照合します。`bench:packing` は初期化後の計算とWASM JSON境界の比較であり、ネットワークやWorker起動時間を含むブラウザー全体のベンチマークではありません。
 
 ## コード構成
 
@@ -67,6 +85,9 @@ src/
 ├── main.tsx                # Expo root component 登録
 ├── packing.test.ts         # 装箱アルゴリズムの回帰テスト
 ├── packing.worker.ts       # Web用の計算Worker
+├── packingWorkerEngine.ts  # Rust / TypeScriptエンジンの選択とフォールバック
+├── packingWasm.ts          # WASMマニフェスト取得、初期化、JSON境界
+├── packingParity.test.ts   # TypeScript / 実WASMの差分回帰テスト
 ├── packingTask.web.ts      # Workerの起動、キャンセル、エラー処理
 ├── packingTaskFallback.ts  # ネイティブ等では描画後に計算を実行
 ├── sceneModel.ts           # Web / iOS / Android共通の3D幾何モデル

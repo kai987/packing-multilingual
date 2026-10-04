@@ -246,6 +246,8 @@ export default function App() {
     isCalculating,
     error: calculationError,
     retry,
+    backend: calculationBackend,
+    usedFallback: calculationUsedFallback,
   } = usePackingPlans(packingRequest)
   const baseRecommendations = packingPlanOptions.single
   const baseSplitRecommendations = packingPlanOptions.split
@@ -761,6 +763,18 @@ export default function App() {
                     ? text.strategy.compactNote
                     : text.strategy.stableNote}
                 </Text>
+
+                {calculationBackend ? (
+                  <Text testID="packing-engine-status" style={styles.metaText}>
+                    {text.recommendations.engine}:{' '}
+                    {calculationBackend === 'rust-wasm'
+                      ? 'Rust / WASM'
+                      : 'TypeScript'}
+                    {calculationUsedFallback
+                      ? ` (${text.recommendations.wasmFallback})`
+                      : ''}
+                  </Text>
+                ) : null}
 
                 {isCalculating ? (
                   <Text

@@ -243,7 +243,7 @@ export function recommendPackingPlans(
   }
 }
 
-function isValidPackingRequest(request: PackingRequest): boolean {
+export function isValidPackingRequest(request: PackingRequest): boolean {
   const positive = (value: number) => Number.isFinite(value) && value > 0
   const validSize = (size: Dimensions) =>
     positive(size.length) && positive(size.width) && positive(size.height)
@@ -2173,7 +2173,7 @@ function summarizeUnits(units: OrderUnit[]) {
 
 function normalizeUnitGroup(units: OrderUnit[]): OrderUnit[] {
   return [...units].sort((left, right) =>
-    left.instanceId.localeCompare(right.instanceId),
+    comparePackingIds(left.instanceId, right.instanceId),
   )
 }
 
@@ -2193,7 +2193,8 @@ function normalizeUnitGrouping(groups: OrderUnit[][]): OrderUnit[][] {
         return weightDiff
       }
 
-      return buildUnitCountSignature(left).localeCompare(
+      return comparePackingIds(
+        buildUnitCountSignature(left),
         buildUnitCountSignature(right),
       )
     })
@@ -2223,7 +2224,7 @@ function buildUnitCountSignature(units: OrderUnit[]): string {
   }
 
   return [...counts.entries()]
-    .sort(([leftId], [rightId]) => leftId.localeCompare(rightId))
+    .sort(([leftId], [rightId]) => comparePackingIds(leftId, rightId))
     .map(([productId, quantity]) => `${productId}:${quantity}`)
     .join(',')
 }
@@ -2245,7 +2246,8 @@ function rankSplitPartitions(partitions: Array<[OrderUnit[], OrderUnit[]]>) {
       return scoreDiff
     }
 
-    return buildUnitGroupSignature(left[0], left[1]).localeCompare(
+    return comparePackingIds(
+      buildUnitGroupSignature(left[0], left[1]),
       buildUnitGroupSignature(right[0], right[1]),
     )
   })
@@ -2260,6 +2262,10 @@ function scoreUnitGrouping(groups: OrderUnit[][]): number {
   const countSpread = Math.max(...counts) - Math.min(...counts)
 
   return volumeSpread / 10_000 + weightSpread / 50 + countSpread * 10
+}
+
+function comparePackingIds(left: string, right: string): number {
+  return left === right ? 0 : left < right ? -1 : 1
 }
 
 function totalUnitVolume(units: OrderUnit[]): number {

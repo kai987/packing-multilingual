@@ -47,7 +47,7 @@ export function ProductCard({
   onToggleItemWrap,
 }: ProductCardProps) {
   return (
-    <article className="product-card">
+    <article className="product-card" data-testid={`product-${product.id}`}>
       <div className="product-top">
         <span
           className="brand-chip"

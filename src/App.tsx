@@ -6,6 +6,7 @@ import {
   useState,
 } from 'react'
 import './App.css'
+import { usePackingPlans } from '@/hooks/usePackingPlans'
 import {
   DetailMetricGrid,
   EmptyState,
@@ -49,8 +50,7 @@ import {
   formatVolumeLiters,
   formatWeight,
   getDisplayItemWrapKind,
-  recommendPacking,
-  recommendSplitPacking,
+  type PackingRequest,
   type PackingStrategy,
 } from '@/packing'
 const repositoryUrl = 'https://github.com/kai987/packing-multilingual'
@@ -334,28 +334,26 @@ function App() {
     [orderLines],
   )
 
-  const baseRecommendations = useMemo(
-    () =>
-      recommendPacking({
-        products: editableProducts,
-        cartons: packingCartons,
-        cushions: packingCushions,
-        orderLines,
-        strategy: packingStrategy,
-      }).slice(0, 3),
+  const packingRequest = useMemo<PackingRequest>(
+    () => ({
+      products: editableProducts,
+      cartons: packingCartons,
+      cushions: packingCushions,
+      orderLines,
+      strategy: packingStrategy,
+    }),
     [editableProducts, orderLines, packingStrategy],
   )
-  const baseSplitRecommendations = useMemo(
-    () =>
-      recommendSplitPacking({
-        products: editableProducts,
-        cartons: packingCartons,
-        cushions: packingCushions,
-        orderLines,
-        strategy: packingStrategy,
-      }).slice(0, 3),
-    [editableProducts, orderLines, packingStrategy],
-  )
+  const {
+    options: packingPlans,
+    isCalculating,
+    error: calculationError,
+    backend: calculationBackend,
+    usedFallback: calculationUsedFallback,
+    retry,
+  } = usePackingPlans(packingRequest)
+  const baseRecommendations = packingPlans.single
+  const baseSplitRecommendations = packingPlans.split
   const recommendations = useMemo(
     () =>
       baseRecommendations.map((recommendation) =>
@@ -847,12 +845,36 @@ function App() {
               : text.strategy.stableNote}
           </p>
 
+          {calculationBackend ? (
+            <p className="strategy-note" data-testid="packing-engine-status">
+              {text.recommendations.engine}:{' '}
+              {calculationBackend === 'rust-wasm' ? 'Rust / WASM' : 'TypeScript'}
+              {calculationUsedFallback
+                ? ` (${text.recommendations.wasmFallback})`
+                : ''}
+            </p>
+          ) : null}
+          {isCalculating ? (
+            <p className="strategy-note" role="status" data-testid="packing-calculating">
+              {text.recommendations.calculating}
+            </p>
+          ) : null}
+          {calculationError ? (
+            <div role="alert">
+              <p>{text.recommendations.calculationFailed}</p>
+              <button type="button" onClick={retry}>
+                {text.recommendations.retry}
+              </button>
+            </div>
+          ) : null}
+
           {totalUnits === 0 ? (
             <EmptyState
               title={text.recommendations.emptyNoItemsTitle}
               body={text.recommendations.emptyNoItemsBody}
             />
-          ) : recommendations.length === 0 ? (
+          ) : calculationError ||
+            (isCalculating && recommendations.length === 0) ? null : recommendations.length === 0 ? (
             <EmptyState
               title={text.recommendations.emptyNoFitTitle}
               body={text.recommendations.emptyNoFitBody}
@@ -1112,10 +1134,16 @@ function App() {
                       {formatDimensions(carton.inner, locale)}
                     </span>
                     <span>
-                      {text.catalog.maxWeight}:{' '}
-                      {carton.maxWeight === null
-                        ? text.catalog.noWeightLimit
-                        : formatWeight(carton.maxWeight, locale)}
+                      {text.catalog.volumetricWeight}:{' '}
+                      {carton.volumetricWeightGrams === null
+                        ? text.catalog.unknownWeightLimit
+                        : formatWeight(carton.volumetricWeightGrams, locale)}
+                    </span>
+                    <span>
+                      {text.catalog.maxLoadWeight}:{' '}
+                      {carton.maxLoadWeightGrams === null
+                        ? text.catalog.unknownWeightLimit
+                        : formatWeight(carton.maxLoadWeightGrams, locale)}
                     </span>
                     {carton.priceYen ? (
                       <span>

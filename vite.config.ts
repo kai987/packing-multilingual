@@ -15,6 +15,9 @@ const githubPagesBase = (() => {
 export default defineConfig({
   plugins: [react()],
   base: githubPagesBase,
+  worker: {
+    format: 'es',
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -37,7 +40,10 @@ export default defineConfig({
           }
 
           if (id.includes('/three/')) {
-            return 'three-core'
+            // Preserve Three.js's core/renderer boundary instead of merging both.
+            return id.includes('/build/three.module')
+              ? 'three-renderer'
+              : 'three-core'
           }
         },
       },

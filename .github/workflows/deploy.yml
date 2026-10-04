@@ -31,6 +31,41 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Dependency audit
+        run: npm audit --audit-level=low
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.93.0
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+
+      - name: Cache Rust build tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .tools/wasm-bindgen
+            rust/packing-core/target
+          key: rust-${{ runner.os }}-1.93.0-${{ hashFiles('rust/packing-core/Cargo.lock', 'scripts/build-wasm.mjs') }}
+
+      - name: Rust checks
+        run: |
+          cargo fmt --manifest-path rust/packing-core/Cargo.toml --check
+          cargo clippy --manifest-path rust/packing-core/Cargo.toml --locked --all-targets -- -D warnings
+          cargo clippy --manifest-path rust/packing-core/Cargo.toml --locked --all-targets --target wasm32-unknown-unknown -- -D warnings
+          npm run test:rust
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
       - name: Build
         run: npm run build
 

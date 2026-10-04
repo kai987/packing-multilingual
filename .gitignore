@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+rust/packing-core/target/
+.tools/
+.expo/
+public/wasm/

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { Edges, OrbitControls } from '@react-three/drei'
+import { Edges } from '@react-three/drei/core/Edges'
+import { OrbitControls } from '@react-three/drei/core/OrbitControls'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { Vector3 } from 'three'
@@ -7,9 +8,9 @@ import {
   LAYER_SEPARATOR_HEIGHT,
   buildVoidFillBlocks,
   getDisplayItemWrapKind,
-  getDisplayItemWrapPadding,
   type Recommendation,
 } from '@/packing'
+import { getPlacementGeometry } from '@/placementGeometry'
 
 type SceneDimensions = {
   cartonX: number
@@ -185,7 +186,6 @@ function PackingMeshes({
   const dims = getSceneDimensions(recommendation)
   const voidFillBlocks = buildVoidFillBlocks(recommendation)
   const itemWrapKind = getDisplayItemWrapKind(recommendation.cushion)
-  const itemWrapPadding = getDisplayItemWrapPadding(recommendation.cushion)
   const cameraDistance = Math.max(dims.cartonX, dims.cartonY, dims.cartonZ) * 1.7
   const sideSpan = Math.max(dims.cartonZ - dims.sidePadding * 2, 0)
   const sideHeight = Math.max(dims.cartonY - dims.topPadding - dims.bottomPadding, 0)
@@ -286,32 +286,13 @@ function PackingMeshes({
         const y = mmToSceneUnits(recommendation.cushion.sidePadding + placement.y)
         const z = mmToSceneUnits(recommendation.bottomFillHeight + placement.z)
         const hasItemWrap = placement.useItemWrap
-        const sideWrap = hasItemWrap
-          ? mmToSceneUnits(
-              Math.min(
-                itemWrapPadding.side,
-                placement.length * 0.18,
-                placement.width * 0.18,
-              ),
-            )
-          : 0
-        const verticalWrap = hasItemWrap
-          ? mmToSceneUnits(
-              Math.min(itemWrapPadding.vertical, placement.height * 0.18),
-            )
-          : 0
+        const { product } = getPlacementGeometry(placement)
         const shellLength = length
         const shellHeight = height
         const shellWidth = width
-        const coreHeight = hasItemWrap
-          ? Math.max(height - verticalWrap * 2, height * 0.58)
-          : height
-        const coreLength = hasItemWrap
-          ? Math.max(length - sideWrap * 2, length * 0.58)
-          : length
-        const coreWidth = hasItemWrap
-          ? Math.max(width - sideWrap * 2, width * 0.58)
-          : width
+        const coreHeight = mmToSceneUnits(product.height)
+        const coreLength = mmToSceneUnits(product.length)
+        const coreWidth = mmToSceneUnits(product.width)
         const position = getBlockPosition({
           cartonX: dims.cartonX,
           cartonZ: dims.cartonZ,

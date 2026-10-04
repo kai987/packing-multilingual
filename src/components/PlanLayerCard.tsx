@@ -4,13 +4,13 @@ import {
   formatDimensions,
   formatDisplayItemWrapKind,
   formatLength,
-  getDisplayItemWrapPadding,
   type DisplayItemWrapKind,
   type PackedLayer,
   type Recommendation,
   type VoidFillBlock,
 } from '@/packing'
 import type { getAppText } from '@/localization'
+import { getPlacementGeometry } from '@/placementGeometry'
 
 type PlanText = ReturnType<typeof getAppText>['plan']
 
@@ -45,8 +45,6 @@ export function PlanLayerCard({
   labels,
   itemWrapKind,
 }: PlanLayerCardProps) {
-  const itemWrapPadding = getDisplayItemWrapPadding(recommendation.cushion)
-
   const boardStyle: CSSProperties = {
     aspectRatio: `${recommendation.carton.inner.length} / ${recommendation.carton.inner.width}`,
   }
@@ -96,24 +94,17 @@ export function PlanLayerCard({
           const heightRate = placement.width / recommendation.carton.inner.width
           const compactClass = getCompactClass(widthRate, heightRate)
           const hasItemWrap = placement.useItemWrap
-          const insetXPercent = hasItemWrap
-            ? Math.min((itemWrapPadding.side / placement.length) * 100, 18)
-            : 0
-          const insetYPercent = hasItemWrap
-            ? Math.min((itemWrapPadding.side / placement.width) * 100, 18)
-            : 0
-          const placementDimensions = formatDimensions(
-            {
-              length: placement.length,
-              width: placement.width,
-              height: placement.height,
-            },
-            locale,
-          )
+          const { product, inset } = getPlacementGeometry(placement)
+          const insetXPercent = (inset.length / placement.length) * 100
+          const insetYPercent = (inset.width / placement.width) * 100
+          const placementDimensions = formatDimensions(product, locale)
 
           return (
             <div
               key={placement.instanceId}
+              data-testid={`placement-${placement.instanceId}`}
+              data-product-size={`${product.length},${product.width},${product.height}`}
+              data-package-size={`${placement.length},${placement.width},${placement.height}`}
               className={`plan-item-shell ${hasItemWrap ? `is-${itemWrapKind}` : 'is-no-wrap'}${compactClass}`}
               title={`${placement.name} / ${placementDimensions}`}
               style={{
@@ -169,11 +160,7 @@ export function PlanLayerCard({
                 formatLength(placement.x, locale),
                 formatLength(placement.y, locale),
                 formatDimensions(
-                  {
-                    length: placement.length,
-                    width: placement.width,
-                    height: placement.height,
-                  },
+                  placement.productSize,
                   locale,
                 ),
               )}
